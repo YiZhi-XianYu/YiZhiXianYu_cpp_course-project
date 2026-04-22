@@ -1,0 +1,205 @@
+/* 基础网页设定与宇宙深蓝渐变背景 */
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, #101030 0%, #030311 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: 'Press Start 2P', monospace;
+    color: #ffffff;
+    overflow: hidden; /* 防止星星超出屏幕产生滚动条 */
+    position: relative;
+}
+
+body {
+    transition: background 0.5s ease, color 0.35s ease;
+}
+
+/* 白天模式：更明亮的天空配色 */
+body.day-mode {
+    background: radial-gradient(circle at 50% 35%, #eaf7ff 0%, #c8e8ff 45%, #93c9ef 100%);
+    color: #1e3550;
+}
+
+/* 星空容器：铺满全屏，位于背景之上、GIF 之下 */
+#stars-container {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    pointer-events: none;
+}
+
+/* GIF 背景图层（保持正方形比例） */
+#gif-bg {
+    position: absolute;
+    top: 50%;
+    left: 30%;
+    transform: translate(-50%, -50%);
+    width: clamp(320px, 64vmin, 700px);
+    aspect-ratio: 1 / 1;
+    
+    /* 注意：请确保你的项目根目录下有 assets/background.gif 文件 */
+    background-image: url('./assets/background.gif'); 
+    background-size: contain; /* 保持完整正方形内容，不拉伸 */
+    background-position: center;
+    background-repeat: no-repeat;
+    
+    z-index: 1; /* 放在 UI 下面，星星上面 */
+    opacity: 0.8; /* 稍微降低透明度，更好地融入星空 */
+    image-rendering: pixelated; /* 保持像素风的锐利边缘 */
+}
+
+@media (max-width: 1200px) {
+    #gif-bg {
+        left: 32%;
+        width: clamp(300px, 60vmin, 620px);
+    }
+}
+
+/* 动态生成的星星通用样式 */
+.star {
+    position: absolute;
+    background-color: #ffffff;
+    border-radius: 50%;
+    z-index: 0;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+    animation: twinkle infinite alternate;
+}
+
+/* 白天模式下保留星点但不闪烁 */
+body.day-mode .star {
+    animation: none;
+    opacity: 0.15;
+    box-shadow: none;
+}
+
+/* 星星闪烁动画 */
+@keyframes twinkle {
+    0% { opacity: 0.1; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 4px #fff; }
+}
+
+/* 游戏主菜单 UI 容器 */
+#main-menu {
+    text-align: center;
+    background-color: rgba(43, 43, 43, 0.85); /* 半透明深灰底色，防止背景太花看不清字 */
+    padding: 40px 60px;
+    box-shadow: 
+        -4px 0 0 0 #fff, 
+        4px 0 0 0 #fff, 
+        0 -4px 0 0 #fff, 
+        0 4px 0 0 #fff;
+    position: absolute;
+    top: 50%;
+    left: 72%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+}
+
+body.day-mode #main-menu {
+    background-color: rgba(245, 252, 255, 0.92);
+    box-shadow:
+        -4px 0 0 0 #2f5d86,
+        4px 0 0 0 #2f5d86,
+        0 -4px 0 0 #2f5d86,
+        0 4px 0 0 #2f5d86;
+}
+
+@media (max-width: 1200px) {
+    #main-menu {
+        left: 74%;
+        padding: 34px 48px;
+    }
+}
+
+@media (max-width: 768px) {
+    #gif-bg {
+        left: 50%;
+        top: 36%;
+        width: clamp(220px, 66vmin, 420px);
+    }
+
+    #main-menu {
+        left: 50%;
+        top: 72%;
+        padding: 24px 20px;
+    }
+}
+
+/* 游戏标题 */
+.game-title {
+    font-size: 32px;
+    color: #fcee09;
+    margin-bottom: 40px;
+    text-shadow: 3px 3px 0 #ff0055;
+    line-height: 1.5;
+}
+
+body.day-mode .game-title {
+    color: #0c4b85;
+    text-shadow: 2px 2px 0 #ffd970;
+}
+
+/* 按钮容器 */
+.btn-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* 像素风按钮样式 */
+.pixel-btn {
+    background-color: transparent;
+    color: #ffffff;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 16px;
+    padding: 15px 20px;
+    border: 4px solid #ffffff;
+    cursor: pointer;
+    transition: all 0.1s;
+    outline: none;
+}
+
+body.day-mode .pixel-btn {
+    color: #214b73;
+    border-color: #2f5d86;
+}
+
+.pixel-btn:hover {
+    background-color: #ffffff;
+    color: #1e1e1e;
+    transform: scale(1.05);
+}
+
+body.day-mode .pixel-btn:hover {
+    background-color: #2f5d86;
+    color: #ffffff;
+}
+
+.pixel-btn:active {
+    transform: scale(0.95);
+}
+
+/* 底部闪烁文字 */
+.footer-text {
+    margin-top: 30px;
+    font-size: 10px;
+    color: #888;
+}
+
+body.day-mode .footer-text {
+    color: #3c6a91;
+}
+
+.blink {
+    animation: blinker 1.5s linear infinite;
+}
+
+@keyframes blinker {
+    50% { opacity: 0.3; }
+}

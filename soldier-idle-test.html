@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soldier Idle Test</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100dvh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #10131b;
+            color: #d8e5ff;
+            font-family: monospace;
+            overflow: hidden;
+        }
+
+        .shell {
+            display: grid;
+            gap: 10px;
+            justify-items: center;
+        }
+
+        .map-wrap {
+            position: relative;
+            box-shadow: 0 0 0 2px #263046, 0 12px 24px rgba(0, 0, 0, 0.45);
+            background: #25131A;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        .soldier {
+            --frame-width: 100px;
+            --frame-height: 100px;
+            --frame-count: 6;
+            --sprite-scale: 1;
+
+            position: absolute;
+            width: var(--frame-width);
+            height: var(--frame-height);
+            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Idle.png');
+            background-repeat: no-repeat;
+            background-position: 0 0;
+            image-rendering: pixelated;
+            transform: scale(var(--sprite-scale));
+            transform-origin: bottom center;
+            animation: soldier-idle 0.8s steps(6) infinite;
+            pointer-events: none;
+        }
+
+        .hint,
+        .status {
+            opacity: 0.9;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .status {
+            color: #9fc1ff;
+        }
+
+        @keyframes soldier-idle {
+            from {
+                background-position: 0 0;
+            }
+            to {
+                background-position: calc(-1 * var(--frame-width) * var(--frame-count)) 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <div class="map-wrap" id="map-wrap">
+            <canvas id="map-canvas" aria-label="Dungeon map"></canvas>
+            <div class="soldier" id="soldier" aria-label="Soldier idle animation"></div>
+        </div>
+        <div class="status" id="status">加载地图中...</div>
+    </main>
+
+    <script>
+        const TMX_PATH = './assets/map/地牢1.tmx';
+        const TILE_SIZE = 32;
+        const SOLDIER_FRAME = 100;
+        const SOLDIER_FEET_OFFSET_Y = 8;
+        const SPAWN_TILE_X = 9;
+        const SPAWN_TILE_Y = 16;
+        const EVENT_TILE_X = 21;
+        const EVENT_TILE_Y = 3;
+        const COLLISION_TILE_OFFSET_Y = -1;
+        const FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
+        const FLIPPED_VERTICALLY_FLAG = 0x40000000;
+        const FLIPPED_DIAGONALLY_FLAG = 0x20000000;
+        const GID_CLEAR_FLAGS_MASK = ~(FLIPPED_HORIZONTALLY_FLAG | FLIPPED_VERTICALLY_FLAG | FLIPPED_DIAGONALLY_FLAG);
+
+        const canvas = document.getElementById('map-canvas');
+        const ctx = canvas.getContext('2d');
+        const mapWrap = document.getElementById('map-wrap');
+        const soldierEl = document.getElementById('soldier');
+        const statusEl = document.getElementById('status');
+
+        const state = {
+            width: 0,
+            height: 0,
+            tileWidth: TILE_SIZE,
+            tileHeight: TILE_SIZE,
+            gids: [],
+            solidGids: new Set(),
+            hasExplicitSolidData: false,
+            tilesetFirstGid: 1,
+            tilesetColumns: 0,
+            tilesetTileCount: 0,
+            tilesetImage: null,
+            specialEventTriggered: false,
+            playerTileX: 0,
+            playerTileY: 0
+        };
+
+        function parseCsvData(csvText) {
+            return csvText
+                .split(',')
+                .map((v) => Number(v.trim()))
+                .filter((v) => !Number.isNaN(v));
+        }
+
+        function isSolidProperty(value) {
+            if (typeof value !== 'string') return false;
+            const normalized = value.toLowerCase();
+            return normalized === 'true' || normalized === '1' || normalized === 'yes';
+        }
+
+        function readTileSolidValue(tileNode) {
+            const props = [...tileNode.querySelectorAll('property')];
+            for (const prop of props) {
+                const propName = (prop.getAttribute('name') || '').trim().toLowerCase();
+                const propType = (prop.getAttribute('type') || '').trim().toLowerCase();
+                const rawValue = prop.getAttribute('value') ?? prop.textContent ?? '';
+                const value = String(rawValue).trim().toLowerCase();
+
+                if (propName !== 'solid') continue;
+
+                if (propType === 'bool' || propType === 'boolean') {
+                    return value === 'true' || value === '1';
+                }
+
+                return isSolidProperty(value);
+            }
+
+            return null;
+        }
+
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error(`图片加载失败: ${src}`));
+                img.src = src;
+            });
+        }
+
+        async function loadTilesetData(tsxUrl, firstGid) {
+            const set = new Set();
+
+            try {
+                const tsxText = await fetch(tsxUrl).then((r) => r.text());
+                const tsxDoc = new DOMParser().parseFromString(tsxText, 'text/xml');
+                const tilesetNode = tsxDoc.querySelector('tileset');
+                const imageNode = tsxDoc.querySelector('image');
+
+                if (!tilesetNode || !imageNode) {
+                    throw new Error('TSX 缺少 tileset 或 image 节点');
+                }
+
+                const imageSource = imageNode.getAttribute('source');
+                if (!imageSource) {
+                    throw new Error('TSX image.source 为空');
+                }
+
+                const imageUrl = new URL(imageSource, tsxUrl).href;
+                const image = await loadImage(imageUrl);
+
+                state.tilesetFirstGid = firstGid;
+                state.tilesetColumns = Number(tilesetNode.getAttribute('columns')) || 1;
+                state.tilesetTileCount = Number(tilesetNode.getAttribute('tilecount')) || 0;
+                state.tilesetImage = image;
+
+                const tiles = [...tsxDoc.querySelectorAll('tile')];
+                let explicitSolidCount = 0;
+
+                tiles.forEach((tileNode) => {
+                    const localId = Number(tileNode.getAttribute('id'));
+                    const solidValue = readTileSolidValue(tileNode);
+
+                    if (solidValue === null || Number.isNaN(localId)) return;
+
+                    explicitSolidCount += 1;
+
+                    if (solidValue === true) {
+                        set.add(firstGid + localId);
+                    }
+                });
+
+                state.hasExplicitSolidData = explicitSolidCount > 0;
+            } catch (err) {
+                console.warn('无法读取 TSX，solid 属性将退化为默认规则:', err);
+            }
+
+            return set;
+        }
+
+        function getGidAt(x, y) {
+            const index = y * state.width + x;
+            return state.gids[index] ?? 0;
+        }
+
+        function normalizeGid(gid) {
+            return gid & GID_CLEAR_FLAGS_MASK;
+        }
+
+        function isSolidTileAt(x, y) {
+            if (x < 0 || y < 0 || x >= state.width || y >= state.height) return true;
+            const gid = normalizeGid(getGidAt(x, y));
+
+            // 规则：solid=true 阻挡，solid=false 可通行。若没有任何 solid 数据才退化到 gid=0 阻挡。
+            if (state.hasExplicitSolidData) return state.solidGids.has(gid);
+            return gid === 0;
+        }
+
+        function isTileBlocked(x, y) {
+            return isSolidTileAt(x, y + COLLISION_TILE_OFFSET_Y);
+        }
+
+        function updatePositionText() {
+            statusEl.textContent = `当前位置: (${state.playerTileX}, ${state.playerTileY})`;
+        }
+
+        function triggerSpecialEvent() {
+            // TODO: 在这里添加到达目标坐标后的特殊事件逻辑
+        }
+
+        function checkSpecialEvent() {
+            if (state.specialEventTriggered) return;
+            if (state.playerTileX === EVENT_TILE_X && state.playerTileY === EVENT_TILE_Y) {
+                state.specialEventTriggered = true;
+                triggerSpecialEvent();
+            }
+        }
+
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let y = 0; y < state.height; y++) {
+                for (let x = 0; x < state.width; x++) {
+                    const gid = normalizeGid(getGidAt(x, y));
+                    if (gid === 0 || !state.tilesetImage) {
+                        continue;
+                    }
+
+                    const localId = gid - state.tilesetFirstGid;
+                    if (localId < 0) continue;
+                    if (state.tilesetTileCount > 0 && localId >= state.tilesetTileCount) continue;
+
+                    const srcX = (localId % state.tilesetColumns) * state.tileWidth;
+                    const srcY = Math.floor(localId / state.tilesetColumns) * state.tileHeight;
+
+                    ctx.drawImage(
+                        state.tilesetImage,
+                        srcX,
+                        srcY,
+                        state.tileWidth,
+                        state.tileHeight,
+                        x * state.tileWidth,
+                        y * state.tileHeight,
+                        state.tileWidth,
+                        state.tileHeight
+                    );
+
+                }
+            }
+        }
+
+        function updateSoldierPosition() {
+            const px = state.playerTileX * state.tileWidth + Math.floor(state.tileWidth / 2);
+            const py = (state.playerTileY + 1) * state.tileHeight - SOLDIER_FEET_OFFSET_Y;
+
+            soldierEl.style.left = `${px - SOLDIER_FRAME / 2}px`;
+            soldierEl.style.top = `${py - SOLDIER_FRAME}px`;
+        }
+
+        function movePlayer(dx, dy) {
+            const nextX = state.playerTileX + dx;
+            const nextY = state.playerTileY + dy;
+
+            if (isTileBlocked(nextX, nextY)) return;
+
+            state.playerTileX = nextX;
+            state.playerTileY = nextY;
+            updateSoldierPosition();
+            updatePositionText();
+            checkSpecialEvent();
+        }
+
+        async function init() {
+            try {
+                const tmxText = await fetch(TMX_PATH).then((r) => r.text());
+                const mapDoc = new DOMParser().parseFromString(tmxText, 'text/xml');
+                const mapNode = mapDoc.querySelector('map');
+
+                if (!mapNode) throw new Error('TMX 缺少 <map> 节点');
+
+                state.width = Number(mapNode.getAttribute('width'));
+                state.height = Number(mapNode.getAttribute('height'));
+                state.tileWidth = Number(mapNode.getAttribute('tilewidth')) || TILE_SIZE;
+                state.tileHeight = Number(mapNode.getAttribute('tileheight')) || TILE_SIZE;
+
+                const layer = mapDoc.querySelector('layer data');
+                if (!layer) throw new Error('TMX 缺少图层数据');
+
+                state.gids = parseCsvData(layer.textContent || '');
+
+                const tilesetNode = mapDoc.querySelector('tileset');
+                if (tilesetNode) {
+                    const firstGid = Number(tilesetNode.getAttribute('firstgid')) || 1;
+                    const source = tilesetNode.getAttribute('source');
+
+                    if (source) {
+                        const tsxUrl = new URL(source, new URL(TMX_PATH, window.location.href)).href;
+                        state.solidGids = await loadTilesetData(tsxUrl, firstGid);
+                    }
+                }
+
+                canvas.width = state.width * state.tileWidth;
+                canvas.height = state.height * state.tileHeight;
+                mapWrap.style.width = `${canvas.width}px`;
+                mapWrap.style.height = `${canvas.height}px`;
+
+                drawMap();
+
+                state.playerTileX = SPAWN_TILE_X;
+                state.playerTileY = SPAWN_TILE_Y;
+                updateSoldierPosition();
+                updatePositionText();
+                checkSpecialEvent();
+            } catch (error) {
+                console.error(error);
+                statusEl.textContent = '地图加载失败。请用本地服务器打开该文件。';
+            }
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowUp') movePlayer(0, -1);
+            if (event.key === 'ArrowDown') movePlayer(0, 1);
+            if (event.key === 'ArrowLeft') movePlayer(-1, 0);
+            if (event.key === 'ArrowRight') movePlayer(1, 0);
+        });
+
+        init();
+    </script>
+</body>
+</html>
