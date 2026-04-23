@@ -29,6 +29,7 @@
 
         .map-wrap {
             position: relative;
+            overflow: hidden;
             box-shadow: 0 0 0 2px #263046, 0 12px 24px rgba(0, 0, 0, 0.45);
             background: #25131A;
         }
@@ -41,20 +42,43 @@
         .soldier {
             --frame-width: 100px;
             --frame-height: 100px;
-            --frame-count: 6;
-            --sprite-scale: 1;
+            --sprite-scale: 3;
+            --attack-duration: 420ms;
+            --facing-x: 1;
 
             position: absolute;
             width: var(--frame-width);
             height: var(--frame-height);
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Idle.png');
             background-repeat: no-repeat;
             background-position: 0 0;
             image-rendering: pixelated;
-            transform: scale(var(--sprite-scale));
+            transform: scale(calc(var(--sprite-scale) * var(--facing-x)), var(--sprite-scale));
             transform-origin: bottom center;
-            animation: soldier-idle 0.8s steps(6) infinite;
             pointer-events: none;
+        }
+
+        .soldier.is-idle {
+            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Idle.png');
+            animation: soldier-idle 0.8s steps(6) infinite;
+        }
+
+        .soldier.is-walking {
+            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Walk.png');
+            animation: soldier-walk 0.7s steps(8) infinite;
+        }
+
+        .soldier.is-attacking-1 {
+            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Attack01.png');
+            animation: soldier-attack var(--attack-duration) steps(6) 1;
+        }
+
+        .soldier.is-attacking-2 {
+            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Attack02.png');
+            animation: soldier-attack var(--attack-duration) steps(6) 1;
+        }
+
+        .soldier.is-small-skill-active {
+            filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 8px rgba(255, 255, 255, 0.65));
         }
 
         .hint,
@@ -73,7 +97,25 @@
                 background-position: 0 0;
             }
             to {
-                background-position: calc(-1 * var(--frame-width) * var(--frame-count)) 0;
+                background-position: calc(-1 * var(--frame-width) * 6) 0;
+            }
+        }
+
+        @keyframes soldier-walk {
+            from {
+                background-position: 0 0;
+            }
+            to {
+                background-position: calc(-1 * var(--frame-width) * 8) 0;
+            }
+        }
+
+        @keyframes soldier-attack {
+            from {
+                background-position: 0 0;
+            }
+            to {
+                background-position: calc(-1 * var(--frame-width) * 6) 0;
             }
         }
     </style>
@@ -82,21 +124,31 @@
     <main class="shell">
         <div class="map-wrap" id="map-wrap">
             <canvas id="map-canvas" aria-label="Dungeon map"></canvas>
-            <div class="soldier" id="soldier" aria-label="Soldier idle animation"></div>
+            <div class="soldier is-idle" id="soldier" aria-label="Soldier idle animation"></div>
         </div>
         <div class="status" id="status">加载地图中...</div>
     </main>
 
+    <script src="./cpp/web/game_core.js"></script>
+    <script src="./js/cpp-runtime.js"></script>
     <script>
         const TMX_PATH = './assets/map/地牢1.tmx';
         const TILE_SIZE = 32;
+        const WORLD_SCALE = 2;
+        const MOVE_DURATION_MS = 180;
+        const ATTACK_DURATION_MS = 420;
+        const VIEWPORT_MARGIN_X = 32;
+        const VIEWPORT_MARGIN_Y = 120;
+        const CAMERA_DEADZONE_RATIO_X = 0.18;
+        const CAMERA_TOP_DEADZONE_RATIO_Y = 0.08;
+        const CAMERA_BOTTOM_DEADZONE_RATIO_Y = 0.48;
         const SOLDIER_FRAME = 100;
         const SOLDIER_FEET_OFFSET_Y = 8;
         const SPAWN_TILE_X = 9;
         const SPAWN_TILE_Y = 16;
         const EVENT_TILE_X = 21;
         const EVENT_TILE_Y = 3;
-        const COLLISION_TILE_OFFSET_Y = -1;
+        const COLLISION_TILE_OFFSET_Y = -2;
         const FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
         const FLIPPED_VERTICALLY_FLAG = 0x40000000;
         const FLIPPED_DIAGONALLY_FLAG = 0x20000000;
@@ -107,6 +159,9 @@
         const mapWrap = document.getElementById('map-wrap');
         const soldierEl = document.getElementById('soldier');
         const statusEl = document.getElementById('status');
+        let cppRuntime = null;
+
+        soldierEl.style.setProperty('--attack-duration', `${ATTACK_DURATION_MS}ms`);
 
         const state = {
             width: 0,
@@ -121,8 +176,11 @@
             tilesetTileCount: 0,
             tilesetImage: null,
             specialEventTriggered: false,
-            playerTileX: 0,
-            playerTileY: 0
+            viewportWidth: 0,
+            viewportHeight: 0,
+            lastTileX: SPAWN_TILE_X,
+            lastTileY: SPAWN_TILE_Y,
+            lastStatusText: ''
         };
 
         function parseCsvData(csvText) {
@@ -230,7 +288,6 @@
             if (x < 0 || y < 0 || x >= state.width || y >= state.height) return true;
             const gid = normalizeGid(getGidAt(x, y));
 
-            // 规则：solid=true 阻挡，solid=false 可通行。若没有任何 solid 数据才退化到 gid=0 阻挡。
             if (state.hasExplicitSolidData) return state.solidGids.has(gid);
             return gid === 0;
         }
@@ -239,17 +296,109 @@
             return isSolidTileAt(x, y + COLLISION_TILE_OFFSET_Y);
         }
 
-        function updatePositionText() {
-            statusEl.textContent = `当前位置: (${state.playerTileX}, ${state.playerTileY})`;
+        function setSoldierFacingByX(facingX) {
+            soldierEl.style.setProperty('--facing-x', facingX < 0 ? '-1' : '1');
+        }
+
+        function requestAttack() {
+            if (!cppRuntime) return;
+            cppRuntime.requestAttack(performance.now());
+        }
+
+        function requestSmallSkill() {
+            if (!cppRuntime) return;
+            cppRuntime.requestSmallSkill(performance.now());
+        }
+
+        function requestBigSkill() {
+            if (!cppRuntime) return;
+            cppRuntime.requestBigSkill(performance.now());
+        }
+
+        function updateSoldierAnimation() {
+            const isAttacking = cppRuntime.playerIsAttacking();
+            const attackVariant = isAttacking ? cppRuntime.playerAttackVariant() : 0;
+            const isWalking = !isAttacking && cppRuntime.playerIsWalking();
+            const smallSkillActive = cppRuntime.playerSmallSkillActive();
+
+            const showAttack01 = isAttacking && (smallSkillActive || attackVariant === 1);
+            const showAttack02 = isAttacking && !smallSkillActive && attackVariant === 2;
+
+            soldierEl.classList.toggle('is-attacking-1', showAttack01);
+            soldierEl.classList.toggle('is-attacking-2', showAttack02);
+            soldierEl.classList.toggle('is-walking', isWalking);
+            soldierEl.classList.toggle('is-idle', !isAttacking && !isWalking);
+            soldierEl.classList.toggle('is-small-skill-active', smallSkillActive);
+        }
+
+        function collectTileArea(countGetter, xGetter, yGetter) {
+            const count = countGetter();
+            const area = [];
+            for (let i = 0; i < count; i++) {
+                area.push({ x: xGetter(i), y: yGetter(i) });
+            }
+            return area;
+        }
+
+        function drawTileHighlights(tiles, fillStyle, strokeStyle) {
+            if (!tiles.length) return;
+
+            const tileRenderWidth = state.tileWidth * WORLD_SCALE;
+            const tileRenderHeight = state.tileHeight * WORLD_SCALE;
+            const cameraX = cppRuntime.cameraX();
+            const cameraY = cppRuntime.cameraY();
+
+            ctx.save();
+            ctx.fillStyle = fillStyle;
+            ctx.strokeStyle = strokeStyle;
+            ctx.lineWidth = 1;
+
+            for (const tile of tiles) {
+                if (tile.x < 0 || tile.y < 0 || tile.x >= state.width || tile.y >= state.height) continue;
+
+                const px = tile.x * tileRenderWidth - cameraX;
+                const py = tile.y * tileRenderHeight - cameraY;
+                ctx.fillRect(px, py, tileRenderWidth, tileRenderHeight);
+                ctx.strokeRect(px + 0.5, py + 0.5, tileRenderWidth - 1, tileRenderHeight - 1);
+            }
+
+            ctx.restore();
+        }
+
+        function getWorldWidth() {
+            return state.width * state.tileWidth * WORLD_SCALE;
+        }
+
+        function getWorldHeight() {
+            return state.height * state.tileHeight * WORLD_SCALE;
+        }
+
+        function resizeViewport() {
+            const desiredWidth = Math.floor(window.innerWidth - VIEWPORT_MARGIN_X);
+            const desiredHeight = Math.floor(window.innerHeight - VIEWPORT_MARGIN_Y);
+            const worldWidth = getWorldWidth();
+            const worldHeight = getWorldHeight();
+
+            state.viewportWidth = Math.max(1, Math.min(desiredWidth, worldWidth));
+            state.viewportHeight = Math.max(1, Math.min(desiredHeight, worldHeight));
+            canvas.width = state.viewportWidth;
+            canvas.height = state.viewportHeight;
+            mapWrap.style.width = `${state.viewportWidth}px`;
+            mapWrap.style.height = `${state.viewportHeight}px`;
+
+            if (cppRuntime) {
+                cppRuntime.setViewport(state.viewportWidth, state.viewportHeight);
+            }
         }
 
         function triggerSpecialEvent() {
-            // TODO: 在这里添加到达目标坐标后的特殊事件逻辑
         }
 
         function checkSpecialEvent() {
             if (state.specialEventTriggered) return;
-            if (state.playerTileX === EVENT_TILE_X && state.playerTileY === EVENT_TILE_Y) {
+            const playerTileX = cppRuntime.playerTileX();
+            const playerTileY = cppRuntime.playerTileY();
+            if (playerTileX === EVENT_TILE_X && playerTileY === EVENT_TILE_Y) {
                 state.specialEventTriggered = true;
                 triggerSpecialEvent();
             }
@@ -258,8 +407,17 @@
         function drawMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            for (let y = 0; y < state.height; y++) {
-                for (let x = 0; x < state.width; x++) {
+            const tileRenderWidth = state.tileWidth * WORLD_SCALE;
+            const tileRenderHeight = state.tileHeight * WORLD_SCALE;
+            const cameraX = cppRuntime.cameraX();
+            const cameraY = cppRuntime.cameraY();
+            const startX = Math.max(0, Math.floor(cameraX / tileRenderWidth));
+            const startY = Math.max(0, Math.floor(cameraY / tileRenderHeight));
+            const endX = Math.min(state.width, Math.ceil((cameraX + state.viewportWidth) / tileRenderWidth) + 1);
+            const endY = Math.min(state.height, Math.ceil((cameraY + state.viewportHeight) / tileRenderHeight) + 1);
+
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
                     const gid = normalizeGid(getGidAt(x, y));
                     if (gid === 0 || !state.tilesetImage) {
                         continue;
@@ -278,39 +436,100 @@
                         srcY,
                         state.tileWidth,
                         state.tileHeight,
-                        x * state.tileWidth,
-                        y * state.tileHeight,
-                        state.tileWidth,
-                        state.tileHeight
+                        x * tileRenderWidth - cameraX,
+                        y * tileRenderHeight - cameraY,
+                        tileRenderWidth,
+                        tileRenderHeight
                     );
 
                 }
             }
+
+            const waveTiles = collectTileArea(
+                () => cppRuntime.playerBigWaveAreaCount(),
+                (index) => cppRuntime.playerBigWaveAreaX(index),
+                (index) => cppRuntime.playerBigWaveAreaY(index)
+            );
+            drawTileHighlights(waveTiles, 'rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.6)');
+
+            if (cppRuntime.playerSmallSkillActive()) {
+                const attackTiles = collectTileArea(
+                    () => cppRuntime.playerAttackAreaCount(),
+                    (index) => cppRuntime.playerAttackAreaX(index),
+                    (index) => cppRuntime.playerAttackAreaY(index)
+                );
+                drawTileHighlights(attackTiles, 'rgba(255, 244, 214, 0.14)', 'rgba(255, 244, 214, 0.45)');
+            }
         }
 
         function updateSoldierPosition() {
-            const px = state.playerTileX * state.tileWidth + Math.floor(state.tileWidth / 2);
-            const py = (state.playerTileY + 1) * state.tileHeight - SOLDIER_FEET_OFFSET_Y;
+            const px = cppRuntime.playerWorldX();
+            const py = cppRuntime.playerWorldY();
+            const cameraX = cppRuntime.cameraX();
+            const cameraY = cppRuntime.cameraY();
 
-            soldierEl.style.left = `${px - SOLDIER_FRAME / 2}px`;
-            soldierEl.style.top = `${py - SOLDIER_FRAME}px`;
+            soldierEl.style.left = `${px - cameraX - SOLDIER_FRAME / 2}px`;
+            soldierEl.style.top = `${py - cameraY - SOLDIER_FRAME}px`;
+            setSoldierFacingByX(cppRuntime.playerFacingX());
+            updateSoldierAnimation();
         }
 
         function movePlayer(dx, dy) {
-            const nextX = state.playerTileX + dx;
-            const nextY = state.playerTileY + dy;
+            cppRuntime.requestMove(dx, dy, performance.now());
+        }
 
-            if (isTileBlocked(nextX, nextY)) return;
+        function updatePositionText() {
+            const currentX = cppRuntime.playerTileX();
+            const currentY = cppRuntime.playerTileY();
 
-            state.playerTileX = nextX;
-            state.playerTileY = nextY;
+            const baseAttack = cppRuntime.playerAttackPower();
+            const attackPercent = cppRuntime.playerAttackPowerPercent();
+            const currentAttack = Math.floor(baseAttack * attackPercent / 100);
+            const smallActive = cppRuntime.playerSmallSkillActive();
+            const autoLock = cppRuntime.playerAutoLockEnabled();
+            const smallLeft = cppRuntime.playerSmallSkillTurnsLeft();
+            const smallCd = cppRuntime.playerSmallSkillCooldownLeft();
+            const bigCd = cppRuntime.playerBigSkillCooldownLeft();
+            const waveActive = cppRuntime.playerBigWaveActive();
+
+            const text = `${cppRuntime.playerRoleName()} | HP ${cppRuntime.playerMaxHp()} | ATK ${currentAttack}(${attackPercent}%) | 锁敌:${autoLock ? '开' : '关'} | 小技能:${smallActive ? `持续${smallLeft}` : '未激活'}/CD${smallCd} | 大技能CD${bigCd}${waveActive ? ' | 剑气推进中' : ''} | 当前位置: (${currentX}, ${currentY})`;
+
+            if (text === state.lastStatusText && currentX === state.lastTileX && currentY === state.lastTileY) return;
+
+            state.lastTileX = currentX;
+            state.lastTileY = currentY;
+            state.lastStatusText = text;
+            statusEl.textContent = text;
+        }
+
+        function renderFrame(now) {
+            cppRuntime.update(now ?? performance.now());
+            drawMap();
             updateSoldierPosition();
             updatePositionText();
             checkSpecialEvent();
         }
 
+        function animate(now) {
+            renderFrame(now);
+            requestAnimationFrame(animate);
+        }
+
         async function init() {
             try {
+                cppRuntime = await createCppRuntime();
+                cppRuntime.init({
+                    tileWidth: TILE_SIZE,
+                    tileHeight: TILE_SIZE,
+                    worldScale: WORLD_SCALE,
+                    feetOffsetY: SOLDIER_FEET_OFFSET_Y,
+                    moveDurationMs: MOVE_DURATION_MS,
+                    attackDurationMs: ATTACK_DURATION_MS,
+                    deadZoneRatioX: CAMERA_DEADZONE_RATIO_X,
+                    topDeadZoneRatioY: CAMERA_TOP_DEADZONE_RATIO_Y,
+                    bottomDeadZoneRatioY: CAMERA_BOTTOM_DEADZONE_RATIO_Y
+                });
+
                 const tmxText = await fetch(TMX_PATH).then((r) => r.text());
                 const mapDoc = new DOMParser().parseFromString(tmxText, 'text/xml');
                 const mapNode = mapDoc.querySelector('map');
@@ -338,29 +557,65 @@
                     }
                 }
 
-                canvas.width = state.width * state.tileWidth;
-                canvas.height = state.height * state.tileHeight;
-                mapWrap.style.width = `${canvas.width}px`;
-                mapWrap.style.height = `${canvas.height}px`;
+                resizeViewport();
 
-                drawMap();
+                const solidGrid = new Uint8Array(state.width * state.height);
+                for (let y = 0; y < state.height; y++) {
+                    for (let x = 0; x < state.width; x++) {
+                        solidGrid[y * state.width + x] = isSolidTileAt(x, y) ? 1 : 0;
+                    }
+                }
 
-                state.playerTileX = SPAWN_TILE_X;
-                state.playerTileY = SPAWN_TILE_Y;
-                updateSoldierPosition();
-                updatePositionText();
+                cppRuntime.setWorld(getWorldWidth(), getWorldHeight());
+                cppRuntime.setViewport(state.viewportWidth, state.viewportHeight);
+                cppRuntime.setCollisionGrid(state.width, state.height, COLLISION_TILE_OFFSET_Y, solidGrid);
+                cppRuntime.setSpawn(SPAWN_TILE_X, SPAWN_TILE_Y);
+                cppRuntime.centerCamera();
+
+                state.lastTileX = cppRuntime.playerTileX();
+                state.lastTileY = cppRuntime.playerTileY();
+                statusEl.textContent = `${cppRuntime.playerRoleName()} | HP ${cppRuntime.playerMaxHp()} | ATK ${cppRuntime.playerAttackPower()} | 当前位置: (${state.lastTileX}, ${state.lastTileY})`;
+                renderFrame(performance.now());
                 checkSpecialEvent();
+
+                window.addEventListener('resize', () => {
+                    resizeViewport();
+                    cppRuntime.centerCamera();
+                    renderFrame(performance.now());
+                });
+
+                requestAnimationFrame(animate);
             } catch (error) {
                 console.error(error);
-                statusEl.textContent = '地图加载失败。请用本地服务器打开该文件。';
+                statusEl.textContent = `地图加载失败：${error?.message || 'C++ 模块加载失败'}。请确认已构建 cpp/web/game_core.js 与 game_core.wasm，并通过本地服务器访问。`;
             }
         }
 
         document.addEventListener('keydown', (event) => {
-            if (event.key === 'ArrowUp') movePlayer(0, -1);
-            if (event.key === 'ArrowDown') movePlayer(0, 1);
-            if (event.key === 'ArrowLeft') movePlayer(-1, 0);
-            if (event.key === 'ArrowRight') movePlayer(1, 0);
+            if (event.key.startsWith('Arrow')) event.preventDefault();
+            const key = event.key.toLowerCase();
+            if (key === 'arrowup' || key === 'w') movePlayer(0, -1);
+            if (key === 'arrowdown' || key === 's') movePlayer(0, 1);
+            if (key === 'arrowleft' || key === 'a') movePlayer(-1, 0);
+            if (key === 'arrowright' || key === 'd') movePlayer(1, 0);
+            if (key === 'j' && !event.repeat) {
+                event.preventDefault();
+                requestAttack();
+            }
+            if (key === 'e' && !event.repeat) {
+                event.preventDefault();
+                requestSmallSkill();
+            }
+            if (key === 'q' && !event.repeat) {
+                event.preventDefault();
+                requestBigSkill();
+            }
+        });
+
+        document.addEventListener('mousedown', (event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            requestAttack();
         });
 
         init();

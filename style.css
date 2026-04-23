@@ -61,7 +61,6 @@ body.day-mode {
     }
 }
 
-/* 动态生成的星星通用样式 */
 .star {
     position: absolute;
     background-color: #ffffff;
@@ -71,20 +70,17 @@ body.day-mode {
     animation: twinkle infinite alternate;
 }
 
-/* 白天模式下保留星点但不闪烁 */
 body.day-mode .star {
     animation: none;
     opacity: 0.15;
     box-shadow: none;
 }
 
-/* 星星闪烁动画 */
 @keyframes twinkle {
     0% { opacity: 0.1; transform: scale(0.8); }
     100% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 4px #fff; }
 }
 
-/* 游戏主菜单 UI 容器 */
 #main-menu {
     text-align: center;
     background-color: rgba(43, 43, 43, 0.85); /* 半透明深灰底色，防止背景太花看不清字 */
@@ -131,7 +127,6 @@ body.day-mode #main-menu {
     }
 }
 
-/* 游戏标题 */
 .game-title {
     font-size: 32px;
     color: #fcee09;
@@ -145,14 +140,12 @@ body.day-mode .game-title {
     text-shadow: 2px 2px 0 #ffd970;
 }
 
-/* 按钮容器 */
 .btn-container {
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
 
-/* 像素风按钮样式 */
 .pixel-btn {
     background-color: transparent;
     color: #ffffff;
@@ -185,7 +178,6 @@ body.day-mode .pixel-btn:hover {
     transform: scale(0.95);
 }
 
-/* 底部闪烁文字 */
 .footer-text {
     margin-top: 30px;
     font-size: 10px;
