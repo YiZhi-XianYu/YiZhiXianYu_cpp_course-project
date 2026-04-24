@@ -8,7 +8,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(tile_game_demo
     src/main.cpp
     src/core/CharacterRole.cpp
+    src/core/MonsterRole.cpp
     src/core/PlayerController.cpp
+    src/core/MonsterController.cpp
     src/core/CameraController.cpp
 )
 

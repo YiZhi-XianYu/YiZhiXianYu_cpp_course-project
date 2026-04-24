@@ -29,11 +29,13 @@ TilePos addTile(TilePos a, TilePos b) {
 
 PlayerController::PlayerController(PlayerConfig config, CharacterRole role)
     : config_(config), role_(std::move(role)) {
+    currentHp_ = role_.stats().maxHp;
 }
 
 void PlayerController::setSpawn(TilePos spawn) {
     tilePos_ = spawn;
     worldPos_ = tileToWorld(spawn);
+    currentHp_ = role_.stats().maxHp;
     moving_ = false;
     attacking_ = false;
     bigSkillCasting_ = false;
@@ -42,16 +44,13 @@ void PlayerController::setSpawn(TilePos spawn) {
     attackStartTimeMs_ = 0.0f;
     attackDamageScalePercent_ = 100;
     attackUsesAutoLock_ = true;
+    hurt_ = false;
+    dead_ = false;
+    deathAnimationFinished_ = false;
+    hurtStartTimeMs_ = 0.0f;
+    deathStartTimeMs_ = 0.0f;
 
-    pendingMove_.reset();
-    pendingAttack_ = false;
-    pendingSmallSkill_ = false;
-    pendingBigSkill_ = false;
-    pendingMoveSerial_ = 0;
-    pendingAttackSerial_ = 0;
-    pendingSmallSkillSerial_ = 0;
-    pendingBigSkillSerial_ = 0;
-    inputSerialCounter_ = 0;
+    clearPendingActions();
 
     turnCounter_ = 0;
     smallSkillActiveUntilTurn_ = 0;
@@ -72,6 +71,7 @@ void PlayerController::requestMove(std::int32_t dx, std::int32_t dy,
 }
 
 void PlayerController::requestAttack(float nowMs) {
+    if (dead_) return;
     pendingAttack_ = true;
     pendingAttackSerial_ = ++inputSerialCounter_;
     (void)nowMs;
@@ -85,8 +85,58 @@ void PlayerController::requestBigSkill(float nowMs) {
     requestSkill(SkillSlot::Big, nowMs);
 }
 
+void PlayerController::applyDamage(std::int32_t damage, float nowMs) {
+    if (dead_ || damage <= 0) return;
+
+    currentHp_ = std::max(0, currentHp_ - damage);
+    hurt_ = true;
+    hurtStartTimeMs_ = nowMs;
+
+    if (currentHp_ <= 0) {
+        dead_ = true;
+        deathAnimationFinished_ = false;
+        deathStartTimeMs_ = nowMs;
+        moving_ = false;
+        attacking_ = false;
+        bigSkillCasting_ = false;
+        clearPendingActions();
+    }
+}
+
+void PlayerController::revive(float nowMs) {
+    currentHp_ = role_.stats().maxHp;
+    hurt_ = false;
+    dead_ = false;
+    deathAnimationFinished_ = false;
+    hurtStartTimeMs_ = nowMs;
+    deathStartTimeMs_ = 0.0f;
+    moving_ = false;
+    attacking_ = false;
+    bigSkillCasting_ = false;
+    attackVariant_ = 0;
+    attackChainStep_ = 0;
+    attackStartTimeMs_ = 0.0f;
+    attackDamageScalePercent_ = 100;
+    attackUsesAutoLock_ = true;
+    clearPendingActions();
+}
+
 void PlayerController::update(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
+    if (hurt_ && (nowMs - hurtStartTimeMs_ >= config_.hurtDurationMs)) {
+        hurt_ = false;
+    }
+
+    if (dead_) {
+        moving_ = false;
+        attacking_ = false;
+        bigSkillCasting_ = false;
+        if (!deathAnimationFinished_ && (nowMs - deathStartTimeMs_ >= config_.deathDurationMs)) {
+            deathAnimationFinished_ = true;
+        }
+        return;
+    }
+
     if (moving_) {
         const float elapsed = nowMs - moveStartTimeMs_;
         const float progress = clamp01(elapsed / config_.moveDurationMs);
@@ -115,7 +165,19 @@ bool PlayerController::isMoving() const {
 }
 
 bool PlayerController::isAttacking() const {
-    return attacking_;
+    return attacking_ && !dead_;
+}
+
+bool PlayerController::isHurt() const {
+    return hurt_;
+}
+
+bool PlayerController::isDead() const {
+    return dead_;
+}
+
+bool PlayerController::deathAnimationFinished() const {
+    return deathAnimationFinished_;
 }
 
 Facing PlayerController::facing() const {
@@ -158,7 +220,12 @@ std::int32_t PlayerController::bigSkillCooldownTurnsLeft() const {
 }
 
 std::int32_t PlayerController::currentAttackPower() const {
+    if (dead_) return 0;
     return role_.stats().attackPower * attackDamageScalePercent_ / 100;
+}
+
+std::int32_t PlayerController::currentHp() const {
+    return currentHp_;
 }
 
 bool PlayerController::isBigWaveActive() const {
@@ -175,6 +242,10 @@ std::int32_t PlayerController::bigWaveFrontDistance() const {
 
 Facing PlayerController::bigWaveFacing() const {
     return bigWave_.facing;
+}
+
+std::int32_t PlayerController::currentTurn() const {
+    return turnCounter_;
 }
 
 std::vector<TilePos> PlayerController::attackAreaTiles() const {
@@ -206,15 +277,33 @@ Vec2 PlayerController::worldPos() const {
 }
 
 TilePos PlayerController::forwardVector(Facing facing) {
-    return facing == Facing::Left ? TilePos{-1, 0} : TilePos{1, 0};
+    switch (facing) {
+        case Facing::Left:  return {-1, 0};
+        case Facing::Right: return { 1, 0};
+        case Facing::Up:    return { 0,-1};
+        case Facing::Down:  return { 0, 1};
+        default:            return { 1, 0};
+    }
 }
 
 TilePos PlayerController::leftVector(Facing facing) {
-    return facing == Facing::Left ? TilePos{0, 1} : TilePos{0, -1};
+    switch (facing) {
+        case Facing::Left:  return {0, 1};
+        case Facing::Right: return {0, -1};
+        case Facing::Up:    return {-1, 0};
+        case Facing::Down:  return {1, 0};
+        default:            return {0, 1};
+    }
 }
 
 TilePos PlayerController::rightVector(Facing facing) {
-    return facing == Facing::Left ? TilePos{0, -1} : TilePos{0, 1};
+    switch (facing) {
+        case Facing::Left:  return {0, -1};
+        case Facing::Right: return {0, 1};
+        case Facing::Up:    return {1, 0};
+        case Facing::Down:  return {-1, 0};
+        default:            return {0, -1};
+    }
 }
 
 std::vector<TilePos> PlayerController::smallSkillAttackTiles() const {
@@ -288,6 +377,7 @@ bool PlayerController::bigSkillReady() const {
 
 void PlayerController::requestSkill(SkillSlot slot, float nowMs) {
     (void)nowMs;
+    if (dead_) return;
 
     if (slot == SkillSlot::Small) {
         pendingSmallSkill_ = true;
@@ -301,7 +391,7 @@ void PlayerController::requestSkill(SkillSlot slot, float nowMs) {
 
 void PlayerController::tryStartNextAction(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
-    if (moving_ || attacking_) return;
+    if (dead_ || moving_ || attacking_) return;
 
     const bool hasMove = pendingMove_.has_value();
     const bool hasAttack = pendingAttack_;
@@ -362,8 +452,12 @@ void PlayerController::tryStartNextAction(float nowMs,
 
 void PlayerController::startMoveAction(const MoveRequest& action, float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
+    if (dead_) return;
+    
     if (action.dx < 0) facing_ = Facing::Left;
-    if (action.dx > 0) facing_ = Facing::Right;
+    else if (action.dx > 0) facing_ = Facing::Right;
+    else if (action.dy < 0) facing_ = Facing::Up;
+    else if (action.dy > 0) facing_ = Facing::Down;
 
     resetAttackChain();
 
@@ -382,6 +476,7 @@ void PlayerController::startMoveAction(const MoveRequest& action, float nowMs,
 }
 
 void PlayerController::startAttackAction(float nowMs) {
+    if (dead_) return;
     attacking_ = true;
     bigSkillCasting_ = false;
     attackStartTimeMs_ = nowMs;
@@ -402,6 +497,7 @@ void PlayerController::startAttackAction(float nowMs) {
 
 void PlayerController::startSmallSkillAction(float nowMs) {
     (void)nowMs;
+    if (dead_) return;
 
     if (!smallSkillReady()) {
         return;
@@ -416,6 +512,7 @@ void PlayerController::startSmallSkillAction(float nowMs) {
 }
 
 void PlayerController::startBigSkillAction(float nowMs) {
+    if (dead_) return;
     if (!bigSkillReady()) {
         return;
     }
@@ -453,6 +550,18 @@ void PlayerController::finishAttack(float nowMs,
 
     (void)nowMs;
     (void)isBlocked;
+}
+
+void PlayerController::clearPendingActions() {
+    pendingMove_.reset();
+    pendingAttack_ = false;
+    pendingSmallSkill_ = false;
+    pendingBigSkill_ = false;
+    pendingMoveSerial_ = 0;
+    pendingAttackSerial_ = 0;
+    pendingSmallSkillSerial_ = 0;
+    pendingBigSkillSerial_ = 0;
+    inputSerialCounter_ = 0;
 }
 
 void PlayerController::finishMove(float nowMs,

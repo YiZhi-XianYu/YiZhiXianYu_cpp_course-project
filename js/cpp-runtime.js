@@ -26,6 +26,7 @@ function createJsFallbackRuntime() {
         moving: false,
         hasMoveStart: false,
         facingX: 1,
+        facingY: 0,
         queuedMove: null,
         cameraX: 0,
         cameraY: 0
@@ -126,6 +127,10 @@ function createJsFallbackRuntime() {
         state.moving = true;
         if (dx !== 0) {
             state.facingX = dx < 0 ? -1 : 1;
+            state.facingY = 0;
+        } else if (dy !== 0) {
+            state.facingY = dy < 0 ? -1 : 1;
+            state.facingX = 0;
         }
     }
 
@@ -181,6 +186,8 @@ function createJsFallbackRuntime() {
             state.cameraX = clamp(player.x - state.viewportWidth / 2, 0, worldMaxX);
             state.cameraY = clamp(player.y - state.viewportHeight / 2, 0, worldMaxY);
         },
+        setEnemySpawn() {
+        },
         requestMove(dx, dy, nowMs) {
             if (dx === 0 && dy === 0) return;
 
@@ -231,12 +238,29 @@ function createJsFallbackRuntime() {
         },
         playerFacingX() {
             return state.facingX;
+        },playerFacingY() {
+            return state.facingY;
         },
         playerIsWalking() {
             return state.moving;
         },
         playerIsMoving() {
             return state.moving;
+        },
+        playerIsAttacking() {
+            return false;
+        },
+        playerIsHurt() {
+            return false;
+        },
+        playerIsDead() {
+            return false;
+        },
+        playerDeathFinished() {
+            return false;
+        },
+        playerCurrentHp() {
+            return 0;
         },
         playerSmallSkillActive() {
             return false;
@@ -277,6 +301,68 @@ function createJsFallbackRuntime() {
         playerBigWaveAreaY() {
             return 0;
         },
+        playerRevive() {
+        },
+        enemyTileX() {
+            return 0;
+        },
+        enemyTileY() {
+            return 0;
+        },
+        enemyWorldX() {
+            return 0;
+        },
+        enemyWorldY() {
+            return 0;
+        },
+        enemyFacingX() {
+            return -1;
+        },
+        enemyFacingY() {
+            return 0;
+        },
+        enemyIsWalking() {
+            return false;
+        },
+        enemyIsAttacking() {
+            return false;
+        },
+        enemyIsHurt() {
+            return false;
+        },
+        enemyIsDead() {
+            return false;
+        },
+        enemyIsRemoved() {
+            return false;
+        },
+        enemyAttackVariant() {
+            return 0;
+        },
+        enemyIsDiscovered() {
+            return false;
+        },
+        enemyRoleName() {
+            return '';
+        },
+        enemyMaxHp() {
+            return 0;
+        },
+        enemyCurrentHp() {
+            return 0;
+        },
+        enemyAttackPower() {
+            return 0;
+        },
+        enemyAttackAreaCount() {
+            return 0;
+        },
+        enemyAttackAreaX() {
+            return 0;
+        },
+        enemyAttackAreaY() {
+            return 0;
+        },
         cameraX() {
             return state.cameraX;
         },
@@ -299,20 +385,27 @@ async function createCppRuntime() {
         setViewport: module.cwrap('gc_set_viewport', null, ['number', 'number']),
         setCollisionGrid: module.cwrap('gc_set_collision_grid', null, ['number', 'number', 'number', 'array', 'number']),
         setSpawn: module.cwrap('gc_set_spawn', null, ['number', 'number']),
+        setEnemySpawn: module.cwrap('gc_enemy_set_spawn', null, ['number', 'number']),
         centerCamera: module.cwrap('gc_center_camera', null, []),
         requestMove: module.cwrap('gc_request_move', null, ['number', 'number', 'number']),
         requestAttack: module.cwrap('gc_request_attack', null, ['number']),
         requestSmallSkill: module.cwrap('gc_request_small_skill', null, ['number']),
         requestBigSkill: module.cwrap('gc_request_big_skill', null, ['number']),
+        playerRevive: module.cwrap('gc_player_revive', null, ['number']),
         update: module.cwrap('gc_update', null, ['number']),
         playerTileX: module.cwrap('gc_player_tile_x', 'number', []),
         playerTileY: module.cwrap('gc_player_tile_y', 'number', []),
         playerWorldX: module.cwrap('gc_player_world_x', 'number', []),
         playerWorldY: module.cwrap('gc_player_world_y', 'number', []),
         playerFacingX: module.cwrap('gc_player_facing_x', 'number', []),
+        playerFacingY: module.cwrap('gc_player_facing_y', 'number', []),
         playerIsWalking: module.cwrap('gc_player_is_walking', 'number', []),
         playerIsMoving: module.cwrap('gc_player_is_moving', 'number', []),
         playerIsAttacking: module.cwrap('gc_player_is_attacking', 'number', []),
+        playerIsHurt: module.cwrap('gc_player_is_hurt', 'number', []),
+        playerIsDead: module.cwrap('gc_player_is_dead', 'number', []),
+        playerDeathFinished: module.cwrap('gc_player_death_finished', 'number', []),
+        playerCurrentHp: module.cwrap('gc_player_current_hp', 'number', []),
         playerAttackVariant: module.cwrap('gc_player_attack_variant', 'number', []),
         playerRoleName: module.cwrap('gc_player_role_name', 'string', []),
         playerMaxHp: module.cwrap('gc_player_max_hp', 'number', []),
@@ -330,6 +423,26 @@ async function createCppRuntime() {
         playerBigWaveAreaCount: module.cwrap('gc_player_big_wave_area_count', 'number', []),
         playerBigWaveAreaX: module.cwrap('gc_player_big_wave_area_x', 'number', ['number']),
         playerBigWaveAreaY: module.cwrap('gc_player_big_wave_area_y', 'number', ['number']),
+        enemyTileX: module.cwrap('gc_enemy_tile_x', 'number', []),
+        enemyTileY: module.cwrap('gc_enemy_tile_y', 'number', []),
+        enemyWorldX: module.cwrap('gc_enemy_world_x', 'number', []),
+        enemyWorldY: module.cwrap('gc_enemy_world_y', 'number', []),
+        enemyFacingX: module.cwrap('gc_enemy_facing_x', 'number', []),
+        enemyFacingY: module.cwrap('gc_enemy_facing_y', 'number', []),
+        enemyIsWalking: module.cwrap('gc_enemy_is_walking', 'number', []),
+        enemyIsAttacking: module.cwrap('gc_enemy_is_attacking', 'number', []),
+        enemyIsHurt: module.cwrap('gc_enemy_is_hurt', 'number', []),
+        enemyIsDead: module.cwrap('gc_enemy_is_dead', 'number', []),
+        enemyIsRemoved: module.cwrap('gc_enemy_is_removed', 'number', []),
+        enemyAttackVariant: module.cwrap('gc_enemy_attack_variant', 'number', []),
+        enemyIsDiscovered: module.cwrap('gc_enemy_is_discovered', 'number', []),
+        enemyRoleName: module.cwrap('gc_enemy_role_name', 'string', []),
+        enemyMaxHp: module.cwrap('gc_enemy_max_hp', 'number', []),
+        enemyCurrentHp: module.cwrap('gc_enemy_current_hp', 'number', []),
+        enemyAttackPower: module.cwrap('gc_enemy_attack_power', 'number', []),
+        enemyAttackAreaCount: module.cwrap('gc_enemy_attack_area_count', 'number', []),
+        enemyAttackAreaX: module.cwrap('gc_enemy_attack_area_x', 'number', ['number']),
+        enemyAttackAreaY: module.cwrap('gc_enemy_attack_area_y', 'number', ['number']),
         cameraX: module.cwrap('gc_camera_x', 'number', []),
         cameraY: module.cwrap('gc_camera_y', 'number', [])
     };
@@ -359,6 +472,9 @@ async function createCppRuntime() {
         },
         setSpawn(tileX, tileY) {
             api.setSpawn(tileX, tileY);
+        },
+        setEnemySpawn(tileX, tileY) {
+            api.setEnemySpawn(tileX, tileY);
         },
         centerCamera() {
             api.centerCamera();
@@ -393,6 +509,9 @@ async function createCppRuntime() {
         playerFacingX() {
             return api.playerFacingX();
         },
+        playerFacingY() {
+            return api.playerFacingY();
+        },
         playerIsWalking() {
             return api.playerIsWalking() === 1;
         },
@@ -401,6 +520,18 @@ async function createCppRuntime() {
         },
         playerIsAttacking() {
             return api.playerIsAttacking() === 1;
+        },
+        playerIsHurt() {
+            return api.playerIsHurt() === 1;
+        },
+        playerIsDead() {
+            return api.playerIsDead() === 1;
+        },
+        playerDeathFinished() {
+            return api.playerDeathFinished() === 1;
+        },
+        playerCurrentHp() {
+            return api.playerCurrentHp();
         },
         playerAttackVariant() {
             return api.playerAttackVariant();
@@ -452,6 +583,69 @@ async function createCppRuntime() {
         },
         playerBigWaveAreaY(index) {
             return api.playerBigWaveAreaY(index);
+        },
+        playerRevive(nowMs) {
+            api.playerRevive(nowMs);
+        },
+        enemyTileX() {
+            return api.enemyTileX();
+        },
+        enemyTileY() {
+            return api.enemyTileY();
+        },
+        enemyWorldX() {
+            return api.enemyWorldX();
+        },
+        enemyWorldY() {
+            return api.enemyWorldY();
+        },
+        enemyFacingX() {
+            return api.enemyFacingX();
+        },
+        enemyFacingY() {
+            return api.enemyFacingY();
+        },
+        enemyIsWalking() {
+            return api.enemyIsWalking() === 1;
+        },
+        enemyIsAttacking() {
+            return api.enemyIsAttacking() === 1;
+        },
+        enemyIsHurt() {
+            return api.enemyIsHurt() === 1;
+        },
+        enemyIsDead() {
+            return api.enemyIsDead() === 1;
+        },
+        enemyIsRemoved() {
+            return api.enemyIsRemoved() === 1;
+        },
+        enemyAttackVariant() {
+            return api.enemyAttackVariant();
+        },
+        enemyIsDiscovered() {
+            return api.enemyIsDiscovered() === 1;
+        },
+        enemyRoleName() {
+            return api.enemyRoleName();
+        },
+        enemyMaxHp() {
+            return api.enemyMaxHp();
+        },
+        enemyCurrentHp() {
+            return api.enemyCurrentHp();
+        },
+        enemyAttackPower() {
+            return api.enemyAttackPower();
+        },
+        enemyAttackAreaCount() {
+            return api.enemyAttackAreaCount();
+        },
+        enemyAttackAreaX(index) {
+            return api.enemyAttackAreaX(index);
+        },
+        enemyAttackAreaY(index) {
+            return api.enemyAttackAreaY(index);
         },
         cameraX() {
             return api.cameraX();

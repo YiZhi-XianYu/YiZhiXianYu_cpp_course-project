@@ -16,7 +16,9 @@ struct TilePos {
 
 enum class Facing {
     Left,
-    Right
+    Right,
+    Up,
+    Down
 };
 
 } // namespace core

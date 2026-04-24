@@ -1,5 +1,5 @@
 {
-    "activeFile": "",
+    "activeFile": "demonstration.tsx",
     "expandedProjectPaths": [
         "."
     ],
@@ -40,11 +40,11 @@
             "scaleInEditor": 1
         },
         "地牢1.tmx": {
-            "scale": 1.5,
+            "scale": 1.6684375,
             "selectedLayer": 0,
             "viewCenter": {
-                "x": 468.33333333333326,
-                "y": 232.33333333333331
+                "x": 479.79022288818123,
+                "y": 319.76025472935004
             }
         }
     },
@@ -52,14 +52,15 @@
     "last.imagePath": "C:/Users/XRZ/Desktop/26c++/assets/map",
     "map.lastUsedFormat": "tmx",
     "openFiles": [
-        "C:/software/Tiled/map/demonstration.tsx"
+        "demonstration.tsx",
+        "地牢1.tmx"
     ],
     "project": "thestart.tiled-project",
     "property.type": "bool",
     "recentFiles": [
-        "C:/software/Tiled/map/demonstration.tsx",
         "地牢1.tmx",
         "demonstration.tsx",
+        "C:/software/Tiled/map/demonstration.tsx",
         "C:/software/Tiled/map/地牢.tsx",
         "C:/software/Tiled/map/Dungeon_Tileset.tsx",
         "C:/software/Tiled/map/examples/desert.tmx",

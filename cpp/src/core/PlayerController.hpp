@@ -17,6 +17,8 @@ struct PlayerConfig {
     float feetOffsetY = 8.0f;
     float moveDurationMs = 180.0f;
     float attackDurationMs = 420.0f;
+    float hurtDurationMs = 420.0f;
+    float deathDurationMs = 420.0f;
 };
 
 class PlayerController {
@@ -32,12 +34,17 @@ public:
     void requestAttack(float nowMs);
     void requestSmallSkill(float nowMs);
     void requestBigSkill(float nowMs);
+    void applyDamage(std::int32_t damage, float nowMs);
+    void revive(float nowMs);
 
     void update(float nowMs,
         const std::function<bool(std::int32_t, std::int32_t)>& isBlocked);
 
     [[nodiscard]] bool isMoving() const;
     [[nodiscard]] bool isAttacking() const;
+    [[nodiscard]] bool isHurt() const;
+    [[nodiscard]] bool isDead() const;
+    [[nodiscard]] bool deathAnimationFinished() const;
     [[nodiscard]] Facing facing() const;
     [[nodiscard]] bool isWalkingAnimation() const;
     [[nodiscard]] std::int32_t attackVariant() const;
@@ -48,10 +55,12 @@ public:
     [[nodiscard]] std::int32_t smallSkillCooldownTurnsLeft() const;
     [[nodiscard]] std::int32_t bigSkillCooldownTurnsLeft() const;
     [[nodiscard]] std::int32_t currentAttackPower() const;
+    [[nodiscard]] std::int32_t currentHp() const;
     [[nodiscard]] bool isBigWaveActive() const;
     [[nodiscard]] TilePos bigWaveOriginTile() const;
     [[nodiscard]] std::int32_t bigWaveFrontDistance() const;
     [[nodiscard]] Facing bigWaveFacing() const;
+    [[nodiscard]] std::int32_t currentTurn() const;
     [[nodiscard]] std::vector<TilePos> attackAreaTiles() const;
     [[nodiscard]] std::vector<TilePos> bigWaveTiles() const;
     [[nodiscard]] const CharacterRole& role() const;
@@ -87,6 +96,7 @@ private:
     void startBigSkillAction(float nowMs);
     void finishAttack(float nowMs,
         const std::function<bool(std::int32_t, std::int32_t)>& isBlocked);
+    void clearPendingActions();
     [[nodiscard]] static TilePos forwardVector(Facing facing);
     [[nodiscard]] static TilePos leftVector(Facing facing);
     [[nodiscard]] static TilePos rightVector(Facing facing);
@@ -100,6 +110,7 @@ private:
 private:
     PlayerConfig config_;
     CharacterRole role_;
+    std::int32_t currentHp_ = 0;
 
     TilePos tilePos_{};
     Vec2 worldPos_{};
@@ -118,6 +129,11 @@ private:
     std::int32_t attackVariant_ = 0;
     std::int32_t attackChainStep_ = 0;
     float attackStartTimeMs_ = 0.0f;
+    bool hurt_ = false;
+    bool dead_ = false;
+    bool deathAnimationFinished_ = false;
+    float hurtStartTimeMs_ = 0.0f;
+    float deathStartTimeMs_ = 0.0f;
 
     std::optional<MoveRequest> pendingMove_;
     bool pendingAttack_ = false;
