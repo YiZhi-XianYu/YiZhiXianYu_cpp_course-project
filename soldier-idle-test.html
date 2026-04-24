@@ -327,6 +327,7 @@
         const WORLD_SCALE = 2;
         const MOVE_DURATION_MS = 180;
         const ATTACK_DURATION_MS = 420;
+        const GOBLIN_ATTACK_DURATION_MS = 420;
         const VIEWPORT_MARGIN_X = 32;
         const VIEWPORT_MARGIN_Y = 120;
         const CAMERA_DEADZONE_RATIO_X = 0.18;
@@ -360,7 +361,7 @@
         let deathOverlayVisible = false;
 
         soldierEl.style.setProperty('--attack-duration', `${ATTACK_DURATION_MS}ms`);
-        goblinEl.style.setProperty('--attack-duration', '1000ms');
+        goblinEl.style.setProperty('--attack-duration', `${GOBLIN_ATTACK_DURATION_MS}ms`);
 
         const state = {
             width: 0,
