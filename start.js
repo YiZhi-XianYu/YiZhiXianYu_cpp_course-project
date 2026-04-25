@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
 const btnStart = document.getElementById('btn-start');
 const btnLoad = document.getElementById('btn-load');
 const btnSwitch = document.getElementById('btn-switch');
+const runToken = new URLSearchParams(window.location.search).get('run');
 
 let isDayMode = false;
 
@@ -45,7 +46,13 @@ function updateSwitchButtonText() {
 
 // 开始游戏功能
 btnStart.addEventListener('click', () => {
-    window.location.href = 'soldier-idle-test.html';
+    let gameUrl = 'soldier-idle-test.html?v=20260425-6';
+    if (runToken) {
+        gameUrl += `&run=${encodeURIComponent(runToken)}`;
+    }
+    const sessionToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    gameUrl += `&session=${encodeURIComponent(sessionToken)}`;
+    window.location.href = gameUrl;
 });
 
 // 读取存档功能

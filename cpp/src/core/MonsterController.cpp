@@ -49,6 +49,8 @@ void MonsterController::setSpawn(TilePos spawn) {
     move_ = MoveState{};
     attacking_ = false;
     attackVariant_ = 0;
+    attackImpactResolved_ = false;
+    attackImpactConsumed_ = false;
     attackStartTimeMs_ = 0.0f;
     lastAttackTimeMs_ = -1000000.0f;
     lastProcessedPlayerTurn_ = -1;
@@ -118,7 +120,11 @@ void MonsterController::update(float nowMs,
 
     if (attacking_) {
         const float elapsedAttack = nowMs - attackStartTimeMs_;
-        if (elapsedAttack >= std::max(1.0f, config_.attackDurationMs)) {
+        const float attackDuration = std::max(1.0f, config_.attackDurationMs);
+        if (!attackImpactResolved_ && elapsedAttack >= attackDuration * 0.5f) {
+            attackImpactResolved_ = true;
+        }
+        if (elapsedAttack >= attackDuration) {
             attacking_ = false;
             attackVariant_ = 0;
         }
@@ -203,6 +209,14 @@ std::int32_t MonsterController::attackVariant() const {
     return attackVariant_;
 }
 
+bool MonsterController::consumeAttackImpactReady() {
+    if (!attacking_) return false;
+    if (!attackImpactResolved_) return false;
+    if (attackImpactConsumed_) return false;
+    attackImpactConsumed_ = true;
+    return true;
+}
+
 std::int32_t MonsterController::currentHp() const {
     return currentHp_;
 }
@@ -263,6 +277,8 @@ void MonsterController::faceTo(TilePos target) {
 void MonsterController::startAttack(float nowMs) {
     if (dead_ || removed_) return;
     attacking_ = true;
+    attackImpactResolved_ = false;
+    attackImpactConsumed_ = false;
     attackStartTimeMs_ = nowMs;
     lastAttackTimeMs_ = nowMs;
 
@@ -360,7 +376,10 @@ std::optional<TilePos> MonsterController::nextShortestStepToward(
 
             const std::int32_t nextIndex = indexOf(next);
             if (visited[static_cast<std::size_t>(nextIndex)] != 0) continue;
-            if (isBlocked(next.x, next.y)) continue;
+            // 目标点是玩家所在格时，允许作为搜索终点参与路径计算；
+            // 这样可求得“朝玩家最短路径前进一步”的方向，同时不会真的走进玩家格。
+            const bool isTargetTile = (next.x == target.x && next.y == target.y);
+            if (!isTargetTile && isBlocked(next.x, next.y)) continue;
 
             visited[static_cast<std::size_t>(nextIndex)] = 1;
             prev[static_cast<std::size_t>(nextIndex)] = current;

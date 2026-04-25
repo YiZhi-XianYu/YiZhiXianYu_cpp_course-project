@@ -188,6 +188,11 @@ function createJsFallbackRuntime() {
         },
         setEnemySpawn() {
         },
+        setEnemySpawnAt() {
+        },
+        enemyCount() {
+            return 0;
+        },
         requestMove(dx, dy, nowMs) {
             if (dx === 0 && dy === 0) return;
 
@@ -363,6 +368,57 @@ function createJsFallbackRuntime() {
         enemyAttackAreaY() {
             return 0;
         },
+        enemyTileXAt() {
+            return 0;
+        },
+        enemyTileYAt() {
+            return 0;
+        },
+        enemyWorldXAt() {
+            return 0;
+        },
+        enemyWorldYAt() {
+            return 0;
+        },
+        enemyFacingXAt() {
+            return -1;
+        },
+        enemyFacingYAt() {
+            return 0;
+        },
+        enemyIsWalkingAt() {
+            return false;
+        },
+        enemyIsAttackingAt() {
+            return false;
+        },
+        enemyIsHurtAt() {
+            return false;
+        },
+        enemyIsDeadAt() {
+            return false;
+        },
+        enemyIsRemovedAt() {
+            return true;
+        },
+        enemyAttackVariantAt() {
+            return 0;
+        },
+        enemyIsDiscoveredAt() {
+            return false;
+        },
+        enemyCurrentHpAt() {
+            return 0;
+        },
+        enemyAttackAreaCountAt() {
+            return 0;
+        },
+        enemyAttackAreaXAt() {
+            return 0;
+        },
+        enemyAttackAreaYAt() {
+            return 0;
+        },
         cameraX() {
             return state.cameraX;
         },
@@ -386,6 +442,7 @@ async function createCppRuntime() {
         setCollisionGrid: module.cwrap('gc_set_collision_grid', null, ['number', 'number', 'number', 'array', 'number']),
         setSpawn: module.cwrap('gc_set_spawn', null, ['number', 'number']),
         setEnemySpawn: module.cwrap('gc_enemy_set_spawn', null, ['number', 'number']),
+        setEnemySpawnAt: module.cwrap('gc_enemy_set_spawn_at', null, ['number', 'number', 'number']),
         centerCamera: module.cwrap('gc_center_camera', null, []),
         requestMove: module.cwrap('gc_request_move', null, ['number', 'number', 'number']),
         requestAttack: module.cwrap('gc_request_attack', null, ['number']),
@@ -425,6 +482,24 @@ async function createCppRuntime() {
         playerBigWaveAreaY: module.cwrap('gc_player_big_wave_area_y', 'number', ['number']),
         enemyTileX: module.cwrap('gc_enemy_tile_x', 'number', []),
         enemyTileY: module.cwrap('gc_enemy_tile_y', 'number', []),
+        enemyCount: module.cwrap('gc_enemy_count', 'number', []),
+        enemyTileXAt: module.cwrap('gc_enemy_tile_x_at', 'number', ['number']),
+        enemyTileYAt: module.cwrap('gc_enemy_tile_y_at', 'number', ['number']),
+        enemyWorldXAt: module.cwrap('gc_enemy_world_x_at', 'number', ['number']),
+        enemyWorldYAt: module.cwrap('gc_enemy_world_y_at', 'number', ['number']),
+        enemyFacingXAt: module.cwrap('gc_enemy_facing_x_at', 'number', ['number']),
+        enemyFacingYAt: module.cwrap('gc_enemy_facing_y_at', 'number', ['number']),
+        enemyIsWalkingAt: module.cwrap('gc_enemy_is_walking_at', 'number', ['number']),
+        enemyIsAttackingAt: module.cwrap('gc_enemy_is_attacking_at', 'number', ['number']),
+        enemyIsHurtAt: module.cwrap('gc_enemy_is_hurt_at', 'number', ['number']),
+        enemyIsDeadAt: module.cwrap('gc_enemy_is_dead_at', 'number', ['number']),
+        enemyIsRemovedAt: module.cwrap('gc_enemy_is_removed_at', 'number', ['number']),
+        enemyAttackVariantAt: module.cwrap('gc_enemy_attack_variant_at', 'number', ['number']),
+        enemyIsDiscoveredAt: module.cwrap('gc_enemy_is_discovered_at', 'number', ['number']),
+        enemyCurrentHpAt: module.cwrap('gc_enemy_current_hp_at', 'number', ['number']),
+        enemyAttackAreaCountAt: module.cwrap('gc_enemy_attack_area_count_at', 'number', ['number']),
+        enemyAttackAreaXAt: module.cwrap('gc_enemy_attack_area_x_at', 'number', ['number', 'number']),
+        enemyAttackAreaYAt: module.cwrap('gc_enemy_attack_area_y_at', 'number', ['number', 'number']),
         enemyWorldX: module.cwrap('gc_enemy_world_x', 'number', []),
         enemyWorldY: module.cwrap('gc_enemy_world_y', 'number', []),
         enemyFacingX: module.cwrap('gc_enemy_facing_x', 'number', []),
@@ -475,6 +550,9 @@ async function createCppRuntime() {
         },
         setEnemySpawn(tileX, tileY) {
             api.setEnemySpawn(tileX, tileY);
+        },
+        setEnemySpawnAt(index, tileX, tileY) {
+            api.setEnemySpawnAt(index, tileX, tileY);
         },
         centerCamera() {
             api.centerCamera();
@@ -592,6 +670,60 @@ async function createCppRuntime() {
         },
         enemyTileY() {
             return api.enemyTileY();
+        },
+        enemyCount() {
+            return api.enemyCount();
+        },
+        enemyTileXAt(index) {
+            return api.enemyTileXAt(index);
+        },
+        enemyTileYAt(index) {
+            return api.enemyTileYAt(index);
+        },
+        enemyWorldXAt(index) {
+            return api.enemyWorldXAt(index);
+        },
+        enemyWorldYAt(index) {
+            return api.enemyWorldYAt(index);
+        },
+        enemyFacingXAt(index) {
+            return api.enemyFacingXAt(index);
+        },
+        enemyFacingYAt(index) {
+            return api.enemyFacingYAt(index);
+        },
+        enemyIsWalkingAt(index) {
+            return api.enemyIsWalkingAt(index) === 1;
+        },
+        enemyIsAttackingAt(index) {
+            return api.enemyIsAttackingAt(index) === 1;
+        },
+        enemyIsHurtAt(index) {
+            return api.enemyIsHurtAt(index) === 1;
+        },
+        enemyIsDeadAt(index) {
+            return api.enemyIsDeadAt(index) === 1;
+        },
+        enemyIsRemovedAt(index) {
+            return api.enemyIsRemovedAt(index) === 1;
+        },
+        enemyAttackVariantAt(index) {
+            return api.enemyAttackVariantAt(index);
+        },
+        enemyIsDiscoveredAt(index) {
+            return api.enemyIsDiscoveredAt(index) === 1;
+        },
+        enemyCurrentHpAt(index) {
+            return api.enemyCurrentHpAt(index);
+        },
+        enemyAttackAreaCountAt(index) {
+            return api.enemyAttackAreaCountAt(index);
+        },
+        enemyAttackAreaXAt(index, tileIndex) {
+            return api.enemyAttackAreaXAt(index, tileIndex);
+        },
+        enemyAttackAreaYAt(index, tileIndex) {
+            return api.enemyAttackAreaYAt(index, tileIndex);
         },
         enemyWorldX() {
             return api.enemyWorldX();

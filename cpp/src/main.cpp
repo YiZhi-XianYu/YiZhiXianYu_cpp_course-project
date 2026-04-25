@@ -127,6 +127,12 @@ bool launchCommandAndWait(
 #endif
 }
 
+std::wstring buildRunToken() {
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+    return std::to_wstring(millis);
+}
+
 std::filesystem::path buildScriptPath(const std::filesystem::path& rootDir) {
     return rootDir / "cpp" / "build_game_wasm.ps1";
 }
@@ -241,17 +247,28 @@ bool buildWasmModule(const std::filesystem::path& rootDir) {
 #endif
 }
 
-bool startLocalServer(const std::filesystem::path& rootDir) {
+bool startLocalServer(const std::filesystem::path& rootDir, int* selectedPort) {
 #ifdef _WIN32
     const std::wstring root = rootDir.wstring();
+    for (int port = 8000; port <= 8010; ++port) {
+        const std::wstring portText = std::to_wstring(port);
 
-    const std::wstring pyCommand =
-        L"py -3 -m http.server 8000 --bind 127.0.0.1 --directory \"" + root + L"\"";
-    if (launchDetachedCommand(pyCommand)) return true;
+        const std::wstring pyCommand =
+            L"py -3 -m http.server " + portText + L" --bind 127.0.0.1 --directory \"" + root + L"\"";
+        if (launchDetachedCommand(pyCommand)) {
+            if (selectedPort) *selectedPort = port;
+            return true;
+        }
 
-    const std::wstring pythonCommand =
-        L"python -m http.server 8000 --bind 127.0.0.1 --directory \"" + root + L"\"";
-    return launchDetachedCommand(pythonCommand);
+        const std::wstring pythonCommand =
+            L"python -m http.server " + portText + L" --bind 127.0.0.1 --directory \"" + root + L"\"";
+        if (launchDetachedCommand(pythonCommand)) {
+            if (selectedPort) *selectedPort = port;
+            return true;
+        }
+    }
+
+    return false;
 #else
     (void)rootDir;
     return false;
@@ -273,7 +290,8 @@ int main() {
         return 4;
     }
 
-    if (!startLocalServer(rootDir)) {
+    int selectedPort = 0;
+    if (!startLocalServer(rootDir, &selectedPort)) {
         std::cerr << "无法启动本地 HTTP 服务，回退到直接打开文件。\n";
         if (!openInBrowser(indexPath.wstring())) {
             std::cerr << "无法打开: " << indexPath.string() << "\n";
@@ -283,8 +301,11 @@ int main() {
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-    if (!openInBrowser(L"http://127.0.0.1:8000/index.html")) {
-        std::cerr << "无法打开浏览器地址: http://127.0.0.1:8000/index.html\n";
+    const std::wstring runToken = buildRunToken();
+    const std::wstring browserUrl =
+        L"http://127.0.0.1:" + std::to_wstring(selectedPort) + L"/index.html?run=" + runToken;
+    if (!openInBrowser(browserUrl)) {
+        std::cerr << "无法打开浏览器地址: " << std::string(browserUrl.begin(), browserUrl.end()) << "\n";
         return 3;
     }
 

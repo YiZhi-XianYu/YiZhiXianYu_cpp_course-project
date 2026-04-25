@@ -29,7 +29,8 @@ public:
 
     void requestMove(std::int32_t dx, std::int32_t dy,
         float nowMs,
-        const std::function<bool(std::int32_t, std::int32_t)>& isBlocked);
+        const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
+        const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy);
 
     void requestAttack(float nowMs);
     void requestSmallSkill(float nowMs);
@@ -38,10 +39,13 @@ public:
     void revive(float nowMs);
 
     void update(float nowMs,
-        const std::function<bool(std::int32_t, std::int32_t)>& isBlocked);
+        const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
+        const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy,
+        bool allowActionStart = true);
 
     [[nodiscard]] bool isMoving() const;
     [[nodiscard]] bool isAttacking() const;
+    [[nodiscard]] bool isBigSkillCasting() const;
     [[nodiscard]] bool isHurt() const;
     [[nodiscard]] bool isDead() const;
     [[nodiscard]] bool deathAnimationFinished() const;
@@ -50,6 +54,7 @@ public:
     [[nodiscard]] std::int32_t attackVariant() const;
     [[nodiscard]] std::int32_t attackDamageScalePercent() const;
     [[nodiscard]] bool attackUsesAutoLock() const;
+    [[nodiscard]] bool consumeAttackImpactReady();
     [[nodiscard]] bool isSmallSkillActive() const;
     [[nodiscard]] std::int32_t smallSkillTurnsLeft() const;
     [[nodiscard]] std::int32_t smallSkillCooldownTurnsLeft() const;
@@ -88,10 +93,12 @@ private:
     [[nodiscard]] bool bigSkillReady() const;
     void requestSkill(SkillSlot slot, float nowMs);
     void tryStartNextAction(float nowMs,
-        const std::function<bool(std::int32_t, std::int32_t)>& isBlocked);
+        const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
+        const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy);
     void startMoveAction(const MoveRequest& action, float nowMs,
         const std::function<bool(std::int32_t, std::int32_t)>& isBlocked);
-    void startAttackAction(float nowMs);
+    void startAttackAction(float nowMs,
+        const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy);
     void startSmallSkillAction(float nowMs);
     void startBigSkillAction(float nowMs);
     void finishAttack(float nowMs,
@@ -100,6 +107,7 @@ private:
     [[nodiscard]] static TilePos forwardVector(Facing facing);
     [[nodiscard]] static TilePos leftVector(Facing facing);
     [[nodiscard]] static TilePos rightVector(Facing facing);
+    [[nodiscard]] static TilePos backwardVector(Facing facing);
     [[nodiscard]] std::vector<TilePos> smallSkillAttackTiles() const;
     [[nodiscard]] std::vector<TilePos> bigWaveCurrentTiles() const;
 
@@ -125,6 +133,8 @@ private:
     bool attacking_ = false;
     bool bigSkillCasting_ = false;
     bool attackUsesAutoLock_ = true;
+    bool attackImpactResolved_ = false;
+    bool attackImpactConsumed_ = false;
     std::int32_t attackDamageScalePercent_ = 100;
     std::int32_t attackVariant_ = 0;
     std::int32_t attackChainStep_ = 0;

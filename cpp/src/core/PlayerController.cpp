@@ -7,7 +7,6 @@
 namespace core {
 
 namespace {
-
 float clamp01(float value) {
     return std::clamp(value, 0.0f, 1.0f);
 }
@@ -23,6 +22,14 @@ float easeInOutQuad(float t) {
 
 TilePos addTile(TilePos a, TilePos b) {
     return TilePos{a.x + b.x, a.y + b.y};
+}
+
+Facing facingFromDirectionVector(TilePos direction) {
+    if (direction.x < 0) return Facing::Left;
+    if (direction.x > 0) return Facing::Right;
+    if (direction.y < 0) return Facing::Up;
+    if (direction.y > 0) return Facing::Down;
+    return Facing::Right;
 }
 
 } // namespace
@@ -42,6 +49,8 @@ void PlayerController::setSpawn(TilePos spawn) {
     attackVariant_ = 0;
     attackChainStep_ = 0;
     attackStartTimeMs_ = 0.0f;
+    attackImpactResolved_ = false;
+    attackImpactConsumed_ = false;
     attackDamageScalePercent_ = 100;
     attackUsesAutoLock_ = true;
     hurt_ = false;
@@ -62,12 +71,15 @@ void PlayerController::setSpawn(TilePos spawn) {
 
 void PlayerController::requestMove(std::int32_t dx, std::int32_t dy,
     float nowMs,
-    const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
+    const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
+    const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy) {
     if (dx == 0 && dy == 0) return;
 
     pendingMove_ = MoveRequest{dx, dy};
     pendingMoveSerial_ = ++inputSerialCounter_;
-    tryStartNextAction(nowMs, isBlocked);
+    (void)nowMs;
+    (void)isBlocked;
+    (void)hasEnemy;
 }
 
 void PlayerController::requestAttack(float nowMs) {
@@ -116,13 +128,17 @@ void PlayerController::revive(float nowMs) {
     attackVariant_ = 0;
     attackChainStep_ = 0;
     attackStartTimeMs_ = 0.0f;
+    attackImpactResolved_ = false;
+    attackImpactConsumed_ = false;
     attackDamageScalePercent_ = 100;
     attackUsesAutoLock_ = true;
     clearPendingActions();
 }
 
 void PlayerController::update(float nowMs,
-    const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
+    const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
+    const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy,
+    bool allowActionStart) {
     if (hurt_ && (nowMs - hurtStartTimeMs_ >= config_.hurtDurationMs)) {
         hurt_ = false;
     }
@@ -152,12 +168,18 @@ void PlayerController::update(float nowMs,
 
     if (attacking_) {
         const float elapsedAttack = nowMs - attackStartTimeMs_;
+        const float attackDuration = std::max(1.0f, config_.attackDurationMs);
+        if (!attackImpactResolved_ && elapsedAttack >= attackDuration * 0.5f) {
+            attackImpactResolved_ = true;
+        }
         if (elapsedAttack >= config_.attackDurationMs) {
             finishAttack(nowMs, isBlocked);
         }
     }
 
-    tryStartNextAction(nowMs, isBlocked);
+    if (allowActionStart) {
+        tryStartNextAction(nowMs, isBlocked, hasEnemy);
+    }
 }
 
 bool PlayerController::isMoving() const {
@@ -166,6 +188,10 @@ bool PlayerController::isMoving() const {
 
 bool PlayerController::isAttacking() const {
     return attacking_ && !dead_;
+}
+
+bool PlayerController::isBigSkillCasting() const {
+    return attacking_ && bigSkillCasting_ && !dead_;
 }
 
 bool PlayerController::isHurt() const {
@@ -198,6 +224,14 @@ std::int32_t PlayerController::attackDamageScalePercent() const {
 
 bool PlayerController::attackUsesAutoLock() const {
     return attackUsesAutoLock_;
+}
+
+bool PlayerController::consumeAttackImpactReady() {
+    if (!attacking_) return false;
+    if (!attackImpactResolved_) return false;
+    if (attackImpactConsumed_) return false;
+    attackImpactConsumed_ = true;
+    return true;
 }
 
 bool PlayerController::isSmallSkillActive() const {
@@ -306,18 +340,40 @@ TilePos PlayerController::rightVector(Facing facing) {
     }
 }
 
+TilePos PlayerController::backwardVector(Facing facing) {
+    switch (facing) {
+        case Facing::Left:  return { 1, 0};
+        case Facing::Right: return {-1, 0};
+        case Facing::Up:    return { 0, 1};
+        case Facing::Down:  return { 0,-1};
+        default:            return {-1, 0};
+    }
+}
+
 std::vector<TilePos> PlayerController::smallSkillAttackTiles() const {
     const TilePos front = forwardVector(facing_);
     const TilePos left = leftVector(facing_);
     const TilePos right = rightVector(facing_);
-    const TilePos skillCenter = TilePos{tilePos_.x, tilePos_.y - 2};
-    const TilePos frontCenter = addTile(skillCenter, front);
+
+    const TilePos front1 = addTile(tilePos_, front);
+    const TilePos left1 = addTile(tilePos_, left);
+    const TilePos right1 = addTile(tilePos_, right);
+
+    const TilePos front2{tilePos_.x + front.x * 2, tilePos_.y + front.y * 2};
+    const TilePos left2{tilePos_.x + left.x * 2, tilePos_.y + left.y * 2};
+    const TilePos right2{tilePos_.x + right.x * 2, tilePos_.y + right.y * 2};
+    const TilePos frontLeft1 = addTile(front1, left);
+    const TilePos frontRight1 = addTile(front1, right);
+
     return {
-        frontCenter,
-        addTile(skillCenter, left),
-        addTile(skillCenter, right),
-        addTile(frontCenter, left),
-        addTile(frontCenter, right)
+        front1,
+        left1,
+        right1,
+        frontLeft1,
+        frontRight1,
+        front2,
+        left2,
+        right2
     };
 }
 
@@ -328,7 +384,7 @@ std::vector<TilePos> PlayerController::bigWaveCurrentTiles() const {
 
     const TilePos base = TilePos{
         bigWave_.originTile.x + front.x * bigWave_.frontDistance,
-        bigWave_.originTile.y + front.y * bigWave_.frontDistance - 2
+        bigWave_.originTile.y + front.y * bigWave_.frontDistance
     };
 
     const TilePos frontOfBase = addTile(base, front);
@@ -390,7 +446,8 @@ void PlayerController::requestSkill(SkillSlot slot, float nowMs) {
 }
 
 void PlayerController::tryStartNextAction(float nowMs,
-    const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
+    const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
+    const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy){
     if (dead_ || moving_ || attacking_) return;
 
     const bool hasMove = pendingMove_.has_value();
@@ -436,7 +493,7 @@ void PlayerController::tryStartNextAction(float nowMs,
 
     if (pendingType == PendingActionType::Attack) {
         pendingAttack_ = false;
-        startAttackAction(nowMs);
+        startAttackAction(nowMs, hasEnemy);
         return;
     }
 
@@ -471,15 +528,60 @@ void PlayerController::startMoveAction(const MoveRequest& action, float nowMs,
     moveStartWorld_ = worldPos_;
     moveTargetWorld_ = tileToWorld(next);
     moveTargetTile_ = next;
-
-    onTurnAdvanced();
 }
 
-void PlayerController::startAttackAction(float nowMs) {
+void PlayerController::startAttackAction(float nowMs,
+    const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy) {
     if (dead_) return;
+
+    // 普通攻击按前/左/右/后优先级在近战范围内寻敌，命中后立即转向。
+    if (!isSmallSkillActive() && role_.normalAttack().autoLock) {
+        const auto enemyInDirection = [&](Facing candidateFacing) {
+            const TilePos dir = forwardVector(candidateFacing);
+            const std::int32_t maxRange = std::max(1, role_.normalAttack().rangeTiles);
+            for (std::int32_t distance = 1; distance <= maxRange; ++distance) {
+                const TilePos target{
+                    tilePos_.x + dir.x * distance,
+                    tilePos_.y + dir.y * distance
+                };
+                if (hasEnemy(target.x, target.y)) {
+                    facing_ = candidateFacing;
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        for (const RelativeDirection relativeDirection : role_.normalAttack().targetPriority) {
+            Facing candidateFacing = facing_;
+            switch (relativeDirection) {
+                case RelativeDirection::Front:
+                    candidateFacing = facing_;
+                    break;
+                case RelativeDirection::Left:
+                    candidateFacing = facingFromDirectionVector(leftVector(facing_));
+                    break;
+                case RelativeDirection::Right:
+                    candidateFacing = facingFromDirectionVector(rightVector(facing_));
+                    break;
+                case RelativeDirection::Back:
+                    candidateFacing = facingFromDirectionVector(backwardVector(facing_));
+                    break;
+                default:
+                    break;
+            }
+
+            if (enemyInDirection(candidateFacing)) {
+                break;
+            }
+        }
+    }
+
     attacking_ = true;
     bigSkillCasting_ = false;
     attackStartTimeMs_ = nowMs;
+    attackImpactResolved_ = false;
+    attackImpactConsumed_ = false;
 
     if (isSmallSkillActive()) {
         attackVariant_ = 1;
@@ -491,8 +593,6 @@ void PlayerController::startAttackAction(float nowMs) {
         attackDamageScalePercent_ = 100;
         attackUsesAutoLock_ = true;
     }
-
-    onTurnAdvanced();
 }
 
 void PlayerController::startSmallSkillAction(float nowMs) {
@@ -522,16 +622,17 @@ void PlayerController::startBigSkillAction(float nowMs) {
     bigWave_.active = true;
     bigWave_.originTile = tilePos_;
     bigWave_.facing = facing_;
-    bigWave_.frontDistance = -2;
+    // 从角色脚下开始生成剑气，后续按回合向前推进。
+    bigWave_.frontDistance = 0;
 
     attacking_ = true;
     bigSkillCasting_ = true;
     attackStartTimeMs_ = nowMs;
+    attackImpactResolved_ = false;
+    attackImpactConsumed_ = false;
     attackVariant_ = 2;
     attackDamageScalePercent_ = 300;
     attackUsesAutoLock_ = false;
-
-    onTurnAdvanced();
 }
 
 void PlayerController::finishAttack(float nowMs,
@@ -550,6 +651,7 @@ void PlayerController::finishAttack(float nowMs,
 
     (void)nowMs;
     (void)isBlocked;
+    onTurnAdvanced();
 }
 
 void PlayerController::clearPendingActions() {
@@ -571,6 +673,7 @@ void PlayerController::finishMove(float nowMs,
     moving_ = false;
     (void)nowMs;
     (void)isBlocked;
+    onTurnAdvanced();
 }
 
 } // namespace core

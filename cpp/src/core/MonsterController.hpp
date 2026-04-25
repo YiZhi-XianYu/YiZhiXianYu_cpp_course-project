@@ -48,6 +48,7 @@ public:
     [[nodiscard]] bool isDead() const;
     [[nodiscard]] bool isRemoved() const;
     [[nodiscard]] std::int32_t attackVariant() const;
+    [[nodiscard]] bool consumeAttackImpactReady();
     [[nodiscard]] std::int32_t currentHp() const;
     [[nodiscard]] std::vector<TilePos> attackAreaTiles() const;
 
@@ -97,6 +98,8 @@ private:
 
     bool attacking_ = false;
     std::int32_t attackVariant_ = 0;
+    bool attackImpactResolved_ = false;
+    bool attackImpactConsumed_ = false;
     float attackStartTimeMs_ = 0.0f;
     float lastAttackTimeMs_ = -1000000.0f;
 
