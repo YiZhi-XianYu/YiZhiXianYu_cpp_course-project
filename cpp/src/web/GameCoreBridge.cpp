@@ -517,8 +517,24 @@ GC_KEEPALIVE void gc_center_camera() {
     g_camera->centerOn(g_player->worldPos(), bounds());
 }
 
+// 在 cpp/src/web/GameCoreBridge.cpp 中修改这个函数：
+
 GC_KEEPALIVE void gc_request_move(std::int32_t dx, std::int32_t dy, float nowMs) {
     if (!g_player || g_player->isDead()) return;
+
+    // 遍历当前队列，看看是否已经有移动指令在排队
+    for (auto& cmd : g_playerCommandQueue) {
+        if (cmd.type == PlayerCommandType::Move) {
+            // 如果已经有排队的移动指令，我们不增加队列长度，而是直接【覆盖】它的方向！
+            // 这样既防止了“刹不住车”，又能让玩家长按变向时实现极速响应
+            cmd.dx = dx;
+            cmd.dy = dy;
+            cmd.nowMs = nowMs;
+            return; 
+        }
+    }
+
+    // 如果队列里目前没有移动指令，才推入新的
     g_playerCommandQueue.push_back(PlayerCommand{PlayerCommandType::Move, dx, dy, nowMs});
 }
 
