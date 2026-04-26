@@ -43,21 +43,43 @@
             "scale": 1.6684375,
             "selectedLayer": 0,
             "viewCenter": {
-                "x": 479.79022288818123,
-                "y": 319.76025472935004
+                "x": 513.9539239557969,
+                "y": 319.7602547293501
+            }
+        },
+        "地牢2.tmx": {
+            "scale": 1.5,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 1103.6666666666665,
+                "y": 324.3333333333333
+            }
+        },
+        "地牢3.tmx": {
+            "scale": 1.128125,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 559.7783933518006,
+                "y": 559.7783933518006
             }
         }
     },
     "last.externalTilesetPath": "C:/Users/XRZ/Desktop/26c++/assets/map",
     "last.imagePath": "C:/Users/XRZ/Desktop/26c++/assets/map",
+    "map.height": 35,
     "map.lastUsedFormat": "tmx",
+    "map.width": 35,
     "openFiles": [
         "demonstration.tsx",
-        "地牢1.tmx"
+        "地牢1.tmx",
+        "地牢2.tmx",
+        "地牢3.tmx"
     ],
     "project": "thestart.tiled-project",
     "property.type": "bool",
     "recentFiles": [
+        "地牢3.tmx",
+        "地牢2.tmx",
         "地牢1.tmx",
         "demonstration.tsx",
         "C:/software/Tiled/map/demonstration.tsx",

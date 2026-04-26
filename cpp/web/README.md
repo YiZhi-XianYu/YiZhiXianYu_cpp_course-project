@@ -20,4 +20,4 @@ emcc cpp/src/web/GameCoreBridge.cpp cpp/src/core/PlayerController.cpp cpp/src/co
   -o cpp/web/game_core.js
 ```
 
-构建完成后，`soldier-idle-test.html` 会通过 `js/cpp-runtime.js` 调用该模块，把角色移动与镜头逻辑交给 C++。
+构建完成后，`map01.html` 会通过 `js/cpp-runtime.js` 调用该模块，把角色移动与镜头逻辑交给 C++。

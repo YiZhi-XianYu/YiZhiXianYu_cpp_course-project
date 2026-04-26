@@ -135,7 +135,7 @@ function updateSwitchButtonText() {
 // 开始游戏
 btnStart.addEventListener('click', () => {
     unlockAudio(); // 确保点击按钮时也能解锁
-    let gameUrl = 'soldier-idle-test.html?v=20260425-6';
+    let gameUrl = 'map01.html?v=20260425-6';
     if (runToken) gameUrl += `&run=${encodeURIComponent(runToken)}`;
     const sessionToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     gameUrl += `&session=${encodeURIComponent(sessionToken)}`;

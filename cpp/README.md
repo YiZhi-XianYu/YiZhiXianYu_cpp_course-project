@@ -36,13 +36,13 @@ cmake --build build --config Release
 
 ## 当前架构说明
 
-- 网页游戏逻辑仍在前端文件中运行（`index.html` / `soldier-idle-test.html` / `start.js`）
+- 网页游戏逻辑仍在前端文件中运行（`index.html` / `map01.html` / `start.js`）
 - C++ 入口程序仅作为启动器
 - `src/core` 下控制器代码作为后续迁移储备，当前不作为运行入口
 
 ## 前端调用 C++ 逻辑
 
-`soldier-idle-test.html` 已切换为通过 WASM 调用 C++ 的移动与镜头逻辑。
+`map01.html` 已切换为通过 WASM 调用 C++ 的移动与镜头逻辑。
 
 构建方式见：`cpp/web/README.md`
 
