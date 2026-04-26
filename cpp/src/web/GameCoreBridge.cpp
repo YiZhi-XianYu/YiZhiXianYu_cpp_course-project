@@ -30,19 +30,18 @@ using core::PlayerController;
 using core::TilePos;
 
 std::unique_ptr<PlayerController> g_player;
-std::unique_ptr<MonsterController> g_enemy;
+std::vector<std::unique_ptr<MonsterController>> g_enemies;
 std::unique_ptr<CameraController> g_camera;
 PlayerConfig g_playerConfig{};
 MonsterConfig g_monsterConfig{};
 CameraConfig g_cameraConfig{};
 bool g_playerSpawned = false;
-bool g_enemySpawned = false;
+std::int32_t g_enemyTurnCursor = 0;
 std::int32_t g_lastProcessedTurn = -1;
 bool g_prevPlayerAttacking = false;
-bool g_prevEnemyAttacking = false;
 bool g_prevBigWaveActive = false;
 std::int32_t g_prevBigWaveFrontDistance = -999;
-bool g_bigWaveHitEnemyForCurrentWave = false;
+std::vector<std::uint8_t> g_bigWaveHitEnemyFlags;
 std::int32_t g_bigWaveDamageSnapshot = 0;
 
 enum class PlayerCommandType {
@@ -73,15 +72,23 @@ float g_viewportHeight = 0.0f;
 
 void resetCombatRuntimeState() {
     g_lastProcessedTurn = -1;
+    g_enemyTurnCursor = 0;
     g_prevPlayerAttacking = false;
-    g_prevEnemyAttacking = false;
     g_prevBigWaveActive = false;
     g_prevBigWaveFrontDistance = -999;
-    g_bigWaveHitEnemyForCurrentWave = false;
+    g_bigWaveHitEnemyFlags.clear();
     g_bigWaveDamageSnapshot = 0;
     g_playerSpawned = false;
-    g_enemySpawned = false;
     g_playerCommandQueue.clear();
+}
+
+void ensureEnemiesSize(std::size_t count) {
+    while (g_enemies.size() < count) {
+        g_enemies.push_back(std::make_unique<MonsterController>(g_monsterConfig));
+    }
+    if (g_bigWaveHitEnemyFlags.size() < g_enemies.size()) {
+        g_bigWaveHitEnemyFlags.resize(g_enemies.size(), 0);
+    }
 }
 
 void ensureControllersInitialized() {
@@ -89,9 +96,8 @@ void ensureControllersInitialized() {
         g_player = std::make_unique<PlayerController>(g_playerConfig, CharacterRole::plainPhysicalMage());
         resetCombatRuntimeState();
     }
-    if (!g_enemy) {
-        g_enemy = std::make_unique<MonsterController>(g_monsterConfig);
-        g_prevEnemyAttacking = false;
+    if (g_enemies.empty()) {
+        ensureEnemiesSize(1);
     }
     if (!g_camera) {
         g_camera = std::make_unique<CameraController>(g_cameraConfig);
@@ -119,9 +125,11 @@ bool isBlocked(std::int32_t x, std::int32_t y) {
 }
 
 bool hasEnemyAt(std::int32_t x, std::int32_t y) {
-    if (!g_enemy || !g_enemySpawned || g_enemy->isRemoved()) return false;
-    const TilePos pos = g_enemy->tilePos();
-    return pos.x == x && pos.y == y;
+    return std::any_of(g_enemies.begin(), g_enemies.end(), [x, y](const std::unique_ptr<MonsterController>& enemy) {
+        if (!enemy || enemy->isRemoved()) return false;
+        const TilePos pos = enemy->tilePos();
+        return pos.x == x && pos.y == y;
+    });
 }
 
 bool isBlockedForPlayer(std::int32_t x, std::int32_t y) {
@@ -129,9 +137,19 @@ bool isBlockedForPlayer(std::int32_t x, std::int32_t y) {
     return hasEnemyAt(x, y);
 }
 
-bool isBlockedForEnemy(std::int32_t x, std::int32_t y, TilePos playerTile) {
+bool isBlockedForEnemy(std::int32_t x, std::int32_t y, TilePos playerTile, std::int32_t selfIndex) {
     if (isBlocked(x, y)) return true;
-    return x == playerTile.x && y == playerTile.y;
+    if (x == playerTile.x && y == playerTile.y) return true;
+
+    for (std::size_t i = 0; i < g_enemies.size(); ++i) {
+        if (static_cast<std::int32_t>(i) == selfIndex) continue;
+        const auto& enemy = g_enemies[i];
+        if (!enemy || enemy->isRemoved()) continue;
+        const TilePos pos = enemy->tilePos();
+        if (pos.x == x && pos.y == y) return true;
+    }
+
+    return false;
 }
 
 bool tileInArea(const std::vector<TilePos>& tiles, TilePos tile) {
@@ -203,8 +221,25 @@ void appendUniqueTiles(std::vector<TilePos>& outTiles, const std::vector<TilePos
 }
 
 bool isEnemyAnimating() {
-    if (!g_enemy || !g_enemySpawned || g_enemy->isRemoved()) return false;
-    return g_enemy->isAttacking() || g_enemy->isWalkingAnimation();
+    return std::any_of(g_enemies.begin(), g_enemies.end(), [](const std::unique_ptr<MonsterController>& enemy) {
+        if (!enemy || enemy->isRemoved()) return false;
+        return enemy->isAttacking() || enemy->isWalkingAnimation();
+    });
+}
+
+MonsterController* enemyAtIndex(std::int32_t index) {
+    if (index < 0) return nullptr;
+    if (index >= static_cast<std::int32_t>(g_enemies.size())) return nullptr;
+    return g_enemies[static_cast<std::size_t>(index)].get();
+}
+
+const MonsterController* legacyEnemy() {
+    for (const auto& enemy : g_enemies) {
+        if (!enemy) continue;
+        if (enemy->isRemoved()) continue;
+        return enemy.get();
+    }
+    return nullptr;
 }
 
 void tryDispatchNextPlayerCommand(float nowMs) {
@@ -238,14 +273,19 @@ void tryDispatchNextPlayerCommand(float nowMs) {
 }
 
 void resolvePlayerAttack(float nowMs) {
-    if (!g_player || !g_enemy) return;
-    if (g_player->isDead() || g_enemy->isDead() || g_enemy->isRemoved()) return;
+    if (!g_player) return;
+    if (g_player->isDead()) return;
     if (!g_player->consumeAttackImpactReady()) return;
     if (g_player->isBigSkillCasting()) return;
 
     const auto attackTiles = g_player->attackAreaTiles();
-    if (tileInArea(attackTiles, g_enemy->tilePos())) {
-        g_enemy->applyDamage(g_player->currentAttackPower(), nowMs, g_player->tilePos());
+    if (attackTiles.empty()) return;
+
+    for (const auto& enemy : g_enemies) {
+        if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
+        if (tileInArea(attackTiles, enemy->tilePos())) {
+            enemy->applyDamage(g_player->currentAttackPower(), nowMs, g_player->tilePos());
+        }
     }
 }
 
@@ -256,7 +296,7 @@ void resolvePlayerBigWaveDamage(float nowMs) {
     if (!waveActive) {
         g_prevBigWaveActive = false;
         g_prevBigWaveFrontDistance = -999;
-        g_bigWaveHitEnemyForCurrentWave = false;
+        g_bigWaveHitEnemyFlags.assign(g_enemies.size(), 0);
         g_bigWaveDamageSnapshot = 0;
         return;
     }
@@ -267,7 +307,7 @@ void resolvePlayerBigWaveDamage(float nowMs) {
     if (!g_prevBigWaveActive) {
         // 新剑气刚释放瞬间不伤害，从 frontDistance=0 开始记录。
         g_prevBigWaveActive = true;
-        g_bigWaveHitEnemyForCurrentWave = false;
+        g_bigWaveHitEnemyFlags.assign(g_enemies.size(), 0);
         g_bigWaveDamageSnapshot = std::max(1, g_player->currentAttackPower());
         previousFrontDistance = 0;
 
@@ -283,10 +323,7 @@ void resolvePlayerBigWaveDamage(float nowMs) {
     }
 
     g_prevBigWaveFrontDistance = currentFrontDistance;
-
-    if (!g_enemy) return;
-    if (g_player->isDead() || g_enemy->isDead() || g_enemy->isRemoved()) return;
-    if (g_bigWaveHitEnemyForCurrentWave) return;
+    if (g_player->isDead()) return;
 
     // 结算“经过地面 + 推进后地面”：将区间内每一步四格并集作为命中区域。
     std::vector<TilePos> impactedTiles;
@@ -298,20 +335,70 @@ void resolvePlayerBigWaveDamage(float nowMs) {
         }
     }
 
-    if (tileInArea(impactedTiles, g_enemy->tilePos())) {
-        const std::int32_t damage = std::max(1, g_bigWaveDamageSnapshot);
-        g_enemy->applyDamage(damage, nowMs, g_player->tilePos());
-        g_bigWaveHitEnemyForCurrentWave = true;
+    const std::int32_t damage = std::max(1, g_bigWaveDamageSnapshot);
+    if (g_bigWaveHitEnemyFlags.size() < g_enemies.size()) {
+        g_bigWaveHitEnemyFlags.resize(g_enemies.size(), 0);
+    }
+
+    for (std::size_t i = 0; i < g_enemies.size(); ++i) {
+        auto& enemy = g_enemies[i];
+        if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
+        if (g_bigWaveHitEnemyFlags[i] != 0) continue;
+
+        if (tileInArea(impactedTiles, enemy->tilePos())) {
+            enemy->applyDamage(damage, nowMs, g_player->tilePos());
+            g_bigWaveHitEnemyFlags[i] = 1;
+        }
     }
 }
 
 void resolveEnemyAttack(float nowMs) {
-    if (!g_player || !g_enemy) return;
-    if (g_player->isDead() || g_enemy->isDead() || g_enemy->isRemoved()) return;
-    if (!g_enemy->consumeAttackImpactReady()) return;
+    if (!g_player) return;
+    if (g_player->isDead()) return;
 
-    if (tileInArea(g_enemy->attackAreaTiles(), g_player->tilePos())) {
-        g_player->applyDamage(g_enemy->role().stats().attackPower, nowMs);
+    std::int32_t totalDamage = 0;
+    for (const auto& enemy : g_enemies) {
+        if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
+        if (!enemy->consumeAttackImpactReady()) continue;
+
+        if (tileInArea(enemy->attackAreaTiles(), g_player->tilePos())) {
+            totalDamage += enemy->role().stats().attackPower;
+        }
+    }
+
+    if (totalDamage > 0) {
+        // 同一帧多怪命中只触发一次受击动画：合并伤害后只调用一次 applyDamage。
+        g_player->applyDamage(totalDamage, nowMs);
+    }
+}
+
+void processEnemyTurnLogic(std::int32_t currentTurn, TilePos playerTile, float nowMs) {
+    if (g_enemyTurnCursor >= static_cast<std::int32_t>(g_enemies.size())) return;
+
+    while (g_enemyTurnCursor < static_cast<std::int32_t>(g_enemies.size())) {
+        const std::int32_t enemyIndex = g_enemyTurnCursor;
+        ++g_enemyTurnCursor;
+
+        auto* enemy = enemyAtIndex(enemyIndex);
+        if (!enemy || enemy->isDead() || enemy->isRemoved()) continue;
+
+        const auto enemyBlockQuery = [playerTile, enemyIndex](std::int32_t x, std::int32_t y) {
+            return isBlockedForEnemy(x, y, playerTile, enemyIndex);
+        };
+
+        // 按列表顺序执行本回合决策，动画会在后续 update 中并发播放。
+        enemy->onPlayerTurnAdvanced(currentTurn, playerTile, nowMs, enemyBlockQuery);
+    }
+}
+
+void updateEnemies(float nowMs, TilePos playerTile) {
+    for (std::size_t i = 0; i < g_enemies.size(); ++i) {
+        auto* enemy = enemyAtIndex(static_cast<std::int32_t>(i));
+        if (!enemy) continue;
+        const auto enemyBlockQuery = [playerTile, i](std::int32_t x, std::int32_t y) {
+            return isBlockedForEnemy(x, y, playerTile, static_cast<std::int32_t>(i));
+        };
+        enemy->update(nowMs, enemyBlockQuery);
     }
 }
 
@@ -352,7 +439,7 @@ GC_KEEPALIVE void gc_init(
     g_monsterConfig.attackDurationMs = 1000.0f;
 
     g_player.reset();
-    g_enemy.reset();
+    g_enemies.clear();
     g_camera.reset();
     ensureControllersInitialized();
     resetCombatRuntimeState();
@@ -381,12 +468,16 @@ GC_KEEPALIVE void gc_set_collision_grid(
 
     if (!solidData || length <= 0) {
         g_baseSolidGrid.clear();
-        if (g_enemy) g_enemy->onMapSwitched();
+        for (auto& enemy : g_enemies) {
+            if (enemy) enemy->onMapSwitched();
+        }
         return;
     }
 
     g_baseSolidGrid.assign(solidData, solidData + length);
-    if (g_enemy) g_enemy->onMapSwitched();
+    for (auto& enemy : g_enemies) {
+        if (enemy) enemy->onMapSwitched();
+    }
 }
 
 GC_KEEPALIVE void gc_set_spawn(std::int32_t tileX, std::int32_t tileY) {
@@ -396,16 +487,28 @@ GC_KEEPALIVE void gc_set_spawn(std::int32_t tileX, std::int32_t tileY) {
     g_player->revive(0.0f);
     g_playerSpawned = true;
     g_lastProcessedTurn = g_player->currentTurn();
-    g_prevPlayerAttacking = false;
     g_camera->centerOn(g_player->worldPos(), bounds());
 }
 
 GC_KEEPALIVE void gc_enemy_set_spawn(std::int32_t tileX, std::int32_t tileY) {
     ensureControllersInitialized();
-    if (!g_enemy) return;
-    g_enemy->setSpawn(TilePos{tileX, tileY});
-    g_enemySpawned = true;
-    g_prevEnemyAttacking = false;
+    ensureEnemiesSize(1);
+    auto* enemy = enemyAtIndex(0);
+    if (!enemy) return;
+    enemy->setSpawn(TilePos{tileX, tileY});
+}
+
+GC_KEEPALIVE void gc_enemy_set_spawn_at(std::int32_t index, std::int32_t tileX, std::int32_t tileY) {
+    if (index < 0) return;
+    ensureControllersInitialized();
+    ensureEnemiesSize(static_cast<std::size_t>(index + 1));
+    auto* enemy = enemyAtIndex(index);
+    if (!enemy) return;
+    enemy->setSpawn(TilePos{tileX, tileY});
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_count() {
+    return static_cast<std::int32_t>(g_enemies.size());
 }
 
 GC_KEEPALIVE void gc_center_camera() {
@@ -440,48 +543,35 @@ GC_KEEPALIVE void gc_player_revive(float nowMs) {
     g_playerCommandQueue.clear();
     g_prevBigWaveActive = false;
     g_prevBigWaveFrontDistance = -999;
-    g_bigWaveHitEnemyForCurrentWave = false;
+    g_bigWaveHitEnemyFlags.assign(g_enemies.size(), 0);
     g_bigWaveDamageSnapshot = 0;
     g_lastProcessedTurn = g_player->currentTurn();
-    g_prevPlayerAttacking = false;
 }
 
 GC_KEEPALIVE void gc_update(float nowMs) {
     ensureControllersInitialized();
     if (!g_player || !g_camera) return;
 
-    // Ignore update ticks before player spawn to prevent accidental pre-spawn combat state.
     if (!g_playerSpawned) return;
 
     const bool allowPlayerStartAction = !isEnemyAnimating();
     g_player->update(nowMs, isBlockedForPlayer, hasEnemyAt, allowPlayerStartAction);
     resolvePlayerAttack(nowMs);
-    resolvePlayerBigWaveDamage(nowMs);
 
-    if (g_enemy && g_enemySpawned) {
-        const TilePos playerTile = g_player->tilePos();
-        const auto enemyBlockQuery = [playerTile](std::int32_t x, std::int32_t y) {
-            return isBlockedForEnemy(x, y, playerTile);
-        };
-
-        if (!g_enemy->isDead() && !g_enemy->isRemoved()) {
-            const std::int32_t currentTurn = g_player->currentTurn();
-            if (currentTurn != g_lastProcessedTurn) {
-                g_lastProcessedTurn = currentTurn;
-                g_enemy->onPlayerTurnAdvanced(currentTurn, playerTile, nowMs, enemyBlockQuery);
-            }
-        }
-
-        g_enemy->update(nowMs, enemyBlockQuery);
-        resolveEnemyAttack(nowMs);
-
-        g_prevEnemyAttacking = g_enemy->isAttacking();
+    const TilePos playerTile = g_player->tilePos();
+    const std::int32_t currentTurn = g_player->currentTurn();
+    if (currentTurn != g_lastProcessedTurn) {
+        g_lastProcessedTurn = currentTurn;
+        g_enemyTurnCursor = 0;
+        processEnemyTurnLogic(currentTurn, playerTile, nowMs);
     }
 
+    updateEnemies(nowMs, playerTile);
+    resolveEnemyAttack(nowMs);
+    resolvePlayerBigWaveDamage(nowMs);
+
     g_prevPlayerAttacking = g_player->isAttacking();
-
     tryDispatchNextPlayerCommand(nowMs);
-
     g_camera->updateFollow(g_player->worldPos(), bounds());
 }
 
@@ -657,34 +747,41 @@ GC_KEEPALIVE float gc_camera_y() {
     return g_camera->position().y;
 }
 
+// ---- Legacy single-enemy APIs (compatible wrappers) ----
 GC_KEEPALIVE std::int32_t gc_enemy_tile_x() {
-    if (!g_enemy) return 0;
-    return g_enemy->tilePos().x;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->tilePos().x;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_tile_y() {
-    if (!g_enemy) return 0;
-    return g_enemy->tilePos().y;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->tilePos().y;
 }
 
 GC_KEEPALIVE float gc_enemy_world_x() {
-    if (!g_enemy) return 0.0f;
-    return g_enemy->worldPos().x;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0.0f;
+    return enemy->worldPos().x;
 }
 
 GC_KEEPALIVE float gc_enemy_world_y() {
-    if (!g_enemy) return 0.0f;
-    return g_enemy->worldPos().y;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0.0f;
+    return enemy->worldPos().y;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_facing_x() {
-    if (!g_enemy) return -1;
-    return g_enemy->facing() == Facing::Left ? -1 : 1;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return -1;
+    return enemy->facing() == Facing::Left ? -1 : 1;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_facing_y() {
-    if (!g_enemy) return 0;
-    switch(g_enemy->facing()) {
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    switch(enemy->facing()) {
         case Facing::Up:    return -1;
         case Facing::Down:  return 1;
         default:            return 0;
@@ -692,77 +789,202 @@ GC_KEEPALIVE std::int32_t gc_enemy_facing_y() {
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_is_walking() {
-    if (!g_enemy) return 0;
-    return g_enemy->isWalkingAnimation() ? 1 : 0;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->isWalkingAnimation() ? 1 : 0;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_is_attacking() {
-    if (!g_enemy) return 0;
-    return g_enemy->isAttacking() ? 1 : 0;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->isAttacking() ? 1 : 0;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_is_hurt() {
-    if (!g_enemy) return 0;
-    return g_enemy->isHurt() ? 1 : 0;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->isHurt() ? 1 : 0;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_is_dead() {
-    if (!g_enemy) return 0;
-    return g_enemy->isDead() ? 1 : 0;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->isDead() ? 1 : 0;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_is_removed() {
-    if (!g_enemy) return 1;
-    return g_enemy->isRemoved() ? 1 : 0;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 1;
+    return enemy->isRemoved() ? 1 : 0;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_attack_variant() {
-    if (!g_enemy) return 0;
-    return g_enemy->attackVariant();
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->attackVariant();
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_is_discovered() {
-    if (!g_enemy) return 0;
-    return g_enemy->isDiscovered() ? 1 : 0;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->isDiscovered() ? 1 : 0;
 }
 
 GC_KEEPALIVE const char* gc_enemy_role_name() {
-    if (!g_enemy) return "";
-    return g_enemy->role().displayName().c_str();
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return "";
+    return enemy->role().displayName().c_str();
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_max_hp() {
-    if (!g_enemy) return 0;
-    return g_enemy->role().stats().maxHp;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->role().stats().maxHp;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_current_hp() {
-    if (!g_enemy) return 0;
-    return g_enemy->currentHp();
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->currentHp();
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_attack_power() {
-    if (!g_enemy) return 0;
-    return g_enemy->role().stats().attackPower;
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return enemy->role().stats().attackPower;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_attack_area_count() {
-    if (!g_enemy) return 0;
-    return static_cast<std::int32_t>(g_enemy->attackAreaTiles().size());
+    const auto* enemy = legacyEnemy();
+    if (!enemy) return 0;
+    return static_cast<std::int32_t>(enemy->attackAreaTiles().size());
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_attack_area_x(std::int32_t index) {
-    if (!g_enemy || index < 0) return 0;
-    const auto tiles = g_enemy->attackAreaTiles();
+    const auto* enemy = legacyEnemy();
+    if (!enemy || index < 0) return 0;
+    const auto tiles = enemy->attackAreaTiles();
     if (index >= static_cast<std::int32_t>(tiles.size())) return 0;
     return tiles[static_cast<std::size_t>(index)].x;
 }
 
 GC_KEEPALIVE std::int32_t gc_enemy_attack_area_y(std::int32_t index) {
-    if (!g_enemy || index < 0) return 0;
-    const auto tiles = g_enemy->attackAreaTiles();
+    const auto* enemy = legacyEnemy();
+    if (!enemy || index < 0) return 0;
+    const auto tiles = enemy->attackAreaTiles();
     if (index >= static_cast<std::int32_t>(tiles.size())) return 0;
     return tiles[static_cast<std::size_t>(index)].y;
+}
+
+// ---- Multi-enemy indexed APIs ----
+GC_KEEPALIVE std::int32_t gc_enemy_tile_x_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->tilePos().x;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_tile_y_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->tilePos().y;
+}
+
+GC_KEEPALIVE float gc_enemy_world_x_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0.0f;
+    return enemy->worldPos().x;
+}
+
+GC_KEEPALIVE float gc_enemy_world_y_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0.0f;
+    return enemy->worldPos().y;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_facing_x_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return -1;
+    return enemy->facing() == Facing::Left ? -1 : 1;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_facing_y_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    switch(enemy->facing()) {
+        case Facing::Up:    return -1;
+        case Facing::Down:  return 1;
+        default:            return 0;
+    }
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_is_walking_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->isWalkingAnimation() ? 1 : 0;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_is_attacking_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->isAttacking() ? 1 : 0;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_is_hurt_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->isHurt() ? 1 : 0;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_is_dead_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->isDead() ? 1 : 0;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_is_removed_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 1;
+    return enemy->isRemoved() ? 1 : 0;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_attack_variant_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->attackVariant();
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_is_discovered_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->isDiscovered() ? 1 : 0;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_current_hp_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->currentHp();
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_attack_area_count_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return static_cast<std::int32_t>(enemy->attackAreaTiles().size());
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_attack_area_x_at(std::int32_t enemyIndex, std::int32_t tileIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy || tileIndex < 0) return 0;
+    const auto tiles = enemy->attackAreaTiles();
+    if (tileIndex >= static_cast<std::int32_t>(tiles.size())) return 0;
+    return tiles[static_cast<std::size_t>(tileIndex)].x;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_attack_area_y_at(std::int32_t enemyIndex, std::int32_t tileIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy || tileIndex < 0) return 0;
+    const auto tiles = enemy->attackAreaTiles();
+    if (tileIndex >= static_cast<std::int32_t>(tiles.size())) return 0;
+    return tiles[static_cast<std::size_t>(tileIndex)].y;
 }
 
 } // extern "C"

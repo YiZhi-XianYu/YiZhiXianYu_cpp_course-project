@@ -39,6 +39,12 @@
             image-rendering: pixelated;
         }
 
+        #enemy-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
         .soldier {
             --frame-width: 100px;
             --frame-height: 100px;
@@ -306,8 +312,8 @@
     <main class="shell">
         <div class="map-wrap" id="map-wrap">
             <canvas id="map-canvas" aria-label="Dungeon map"></canvas>
+            <div id="enemy-layer" aria-hidden="true"></div>
             <div class="soldier is-idle" id="soldier" aria-label="Soldier idle animation"></div>
-            <div class="goblin is-idle" id="goblin" aria-label="Goblin"></div>
         </div>
         <div class="status" id="status">加载地图中...</div>
     </main>
@@ -342,8 +348,6 @@
         const SPAWN_TILE_X = 9;
         const SPAWN_TILE_Y = 17;
         const GOBLIN_FRAME = 100;
-        const GOBLIN_SPAWN_TILE_X = 15;
-        const GOBLIN_SPAWN_TILE_Y = 16;
         const GOBLIN_ATTACK_HIGHLIGHT_OFFSET_Y = -2;
         const EVENT_TILE_X = 21;
         const EVENT_TILE_Y = 3;
@@ -357,7 +361,7 @@
         const ctx = canvas.getContext('2d');
         const mapWrap = document.getElementById('map-wrap');
         const soldierEl = document.getElementById('soldier');
-        const goblinEl = document.getElementById('goblin');
+        const enemyLayerEl = document.getElementById('enemy-layer');
         const statusEl = document.getElementById('status');
         const deathOverlayEl = document.getElementById('death-overlay');
         const reviveButtonEl = document.getElementById('revive-button');
@@ -376,7 +380,19 @@
         let deathByHpTransition = false;
 
         soldierEl.style.setProperty('--attack-duration', `${ATTACK_DURATION_MS}ms`);
-        goblinEl.style.setProperty('--attack-duration', `${GOBLIN_ATTACK_DURATION_MS}ms`);
+        const ENEMY_SPAWNS = [
+            { x: 15, y: 16 },
+            { x: 18, y: 17 },
+            { x: 13, y: 16 },
+            { x: 17, y: 17 },
+            { x: 14, y: 9 },
+            { x: 15, y: 5 },
+            { x: 8, y: 3 },
+            { x: 10, y: 5 },
+            { x: 13, y: 3 },
+            { x: 16, y: 3 }
+        ];
+        const enemyEls = [];
 
         const state = {
             width: 0,
@@ -526,8 +542,8 @@
             soldierEl.style.setProperty('--facing-x', facingX < 0 ? '-1' : '1');
         }
 
-        function setGoblinFacingByX(facingX) {
-            goblinEl.style.setProperty('--facing-x', facingX < 0 ? '-1' : '1');
+        function setGoblinFacingByX(enemyEl, facingX) {
+            enemyEl.style.setProperty('--facing-x', facingX < 0 ? '-1' : '1');
         }
 
         function requestAttack() {
@@ -577,21 +593,35 @@
             soldierEl.classList.toggle('sprite-hidden', isDead && deathFinished);
         }
 
-        function updateGoblinAnimation() {
-            const isRemoved = cppRuntime.enemyIsRemoved();
-            const isDead = !isRemoved && cppRuntime.enemyIsDead();
-            const isHurt = !isRemoved && !isDead && cppRuntime.enemyIsHurt();
-            const isAttacking = !isRemoved && !isDead && !isHurt && cppRuntime.enemyIsAttacking();
-            const attackVariant = isAttacking ? cppRuntime.enemyAttackVariant() : 0;
-            const discovered = cppRuntime.enemyIsDiscovered();
+        function ensureEnemyElements(count) {
+            while (enemyEls.length < count) {
+                const el = document.createElement('div');
+                el.className = 'goblin is-idle';
+                el.style.setProperty('--attack-duration', `${GOBLIN_ATTACK_DURATION_MS}ms`);
+                enemyLayerEl.appendChild(el);
+                enemyEls.push(el);
+            }
 
-            goblinEl.classList.toggle('is-hurt', isHurt);
-            goblinEl.classList.toggle('is-dead', isDead);
-            goblinEl.classList.toggle('is-attacking-1', isAttacking && attackVariant === 1);
-            goblinEl.classList.toggle('is-attacking-2', isAttacking && attackVariant === 2);
-            goblinEl.classList.toggle('is-idle', !isAttacking);
-            goblinEl.classList.toggle('is-discovered', discovered);
-            goblinEl.classList.toggle('sprite-hidden', isRemoved);
+            for (let i = 0; i < enemyEls.length; i++) {
+                enemyEls[i].classList.toggle('sprite-hidden', i >= count);
+            }
+        }
+
+        function updateEnemyAnimationAt(enemyEl, index) {
+            const isRemoved = cppRuntime.enemyIsRemovedAt(index);
+            const isDead = !isRemoved && cppRuntime.enemyIsDeadAt(index);
+            const isHurt = !isRemoved && !isDead && cppRuntime.enemyIsHurtAt(index);
+            const isAttacking = !isRemoved && !isDead && !isHurt && cppRuntime.enemyIsAttackingAt(index);
+            const attackVariant = isAttacking ? cppRuntime.enemyAttackVariantAt(index) : 0;
+            const discovered = cppRuntime.enemyIsDiscoveredAt(index);
+
+            enemyEl.classList.toggle('is-hurt', isHurt);
+            enemyEl.classList.toggle('is-dead', isDead);
+            enemyEl.classList.toggle('is-attacking-1', isAttacking && attackVariant === 1);
+            enemyEl.classList.toggle('is-attacking-2', isAttacking && attackVariant === 2);
+            enemyEl.classList.toggle('is-idle', !isAttacking);
+            enemyEl.classList.toggle('is-discovered', discovered);
+            enemyEl.classList.toggle('sprite-hidden', isRemoved);
         }
 
         function collectTileArea(countGetter, xGetter, yGetter) {
@@ -870,14 +900,21 @@
                 }
             }
 
-            const enemyAttackTiles = collectTileArea(
-                () => cppRuntime.enemyAttackAreaCount(),
-                (index) => cppRuntime.enemyAttackAreaX(index),
-                (index) => cppRuntime.enemyAttackAreaY(index)
-            ).map((tile) => ({
-                x: tile.x,
-                y: tile.y + GOBLIN_ATTACK_HIGHLIGHT_OFFSET_Y
-            }));
+            const enemyAttackTiles = [];
+            const enemyCount = cppRuntime.enemyCount();
+            for (let enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
+                const enemyTiles = collectTileArea(
+                    () => cppRuntime.enemyAttackAreaCountAt(enemyIndex),
+                    (tileIndex) => cppRuntime.enemyAttackAreaXAt(enemyIndex, tileIndex),
+                    (tileIndex) => cppRuntime.enemyAttackAreaYAt(enemyIndex, tileIndex)
+                );
+                for (let i = 0; i < enemyTiles.length; i++) {
+                    enemyAttackTiles.push({
+                        x: enemyTiles[i].x,
+                        y: enemyTiles[i].y + GOBLIN_ATTACK_HIGHLIGHT_OFFSET_Y
+                    });
+                }
+            }
             drawTileHighlights(enemyAttackTiles, 'rgba(255, 92, 92, 0.16)', 'rgba(255, 116, 116, 0.6)');
         }
 
@@ -893,16 +930,22 @@
             updateSoldierAnimation();
         }
 
-        function updateGoblinPosition() {
-            const px = cppRuntime.enemyWorldX();
-            const py = cppRuntime.enemyWorldY();
+        function updateEnemyPositions() {
+            const enemyCount = cppRuntime.enemyCount();
+            ensureEnemyElements(enemyCount);
+
             const cameraX = cppRuntime.cameraX();
             const cameraY = cppRuntime.cameraY();
+            for (let i = 0; i < enemyCount; i++) {
+                const enemyEl = enemyEls[i];
+                const px = cppRuntime.enemyWorldXAt(i);
+                const py = cppRuntime.enemyWorldYAt(i);
 
-            goblinEl.style.left = `${px - cameraX - GOBLIN_FRAME / 2}px`;
-            goblinEl.style.top = `${py - cameraY - GOBLIN_FRAME}px`;
-            setGoblinFacingByX(cppRuntime.enemyFacingX());
-            updateGoblinAnimation();
+                enemyEl.style.left = `${px - cameraX - GOBLIN_FRAME / 2}px`;
+                enemyEl.style.top = `${py - cameraY - GOBLIN_FRAME}px`;
+                setGoblinFacingByX(enemyEl, cppRuntime.enemyFacingXAt(i));
+                updateEnemyAnimationAt(enemyEl, i);
+            }
         }
 
         function movePlayer(dx, dy) {
@@ -928,18 +971,35 @@
             const smallCd = cppRuntime.playerSmallSkillCooldownLeft();
             const bigCd = cppRuntime.playerBigSkillCooldownLeft();
             const waveActive = cppRuntime.playerBigWaveActive();
-            const goblinName = cppRuntime.enemyRoleName();
-            const goblinHp = cppRuntime.enemyCurrentHp();
-            const goblinMaxHp = cppRuntime.enemyMaxHp();
-            const goblinDead = cppRuntime.enemyIsDead();
-            const goblinRemoved = cppRuntime.enemyIsRemoved();
-            const goblinHurt = cppRuntime.enemyIsHurt();
-            const goblinAtk = cppRuntime.enemyAttackPower();
-            const goblinDiscovered = cppRuntime.enemyIsDiscovered();
             const playerState = playerDead ? '阵亡' : playerHurt ? '受击' : '行动中';
-            const goblinState = goblinRemoved ? '已消失' : goblinDead ? '阵亡' : goblinHurt ? '受击' : goblinDiscovered ? '已发现' : '未发现';
+            const enemyCount = cppRuntime.enemyCount();
+            const enemyName = cppRuntime.enemyRoleName();
+            const enemyAtk = cppRuntime.enemyAttackPower();
+            const enemyMaxHp = cppRuntime.enemyMaxHp();
 
-            const text = `${cppRuntime.playerRoleName()} | HP ${playerHp}/${playerMaxHp} | 状态:${playerState} | ATK ${currentAttack}(${attackPercent}%) | 锁敌:${autoLock ? '开' : '关'} | 小技能:${smallActive ? `持续${smallLeft}` : '未激活'}/CD${smallCd} | 大技能CD${bigCd}${waveActive ? ' | 剑气推进中' : ''} | ${goblinName}: HP ${goblinHp}/${goblinMaxHp} ATK ${goblinAtk} ${goblinState} | 当前位置: (${currentX}, ${currentY})`;
+            let aliveEnemies = 0;
+            let discoveredEnemies = 0;
+            let removedEnemies = 0;
+            let totalEnemyHp = 0;
+            for (let i = 0; i < enemyCount; i++) {
+                if (cppRuntime.enemyIsRemovedAt(i)) {
+                    removedEnemies++;
+                    continue;
+                }
+
+                totalEnemyHp += Math.max(0, cppRuntime.enemyCurrentHpAt(i));
+                if (!cppRuntime.enemyIsDeadAt(i)) {
+                    aliveEnemies++;
+                }
+                if (cppRuntime.enemyIsDiscoveredAt(i)) {
+                    discoveredEnemies++;
+                }
+            }
+
+            const activeEnemies = Math.max(0, enemyCount - removedEnemies);
+            const enemyStateSummary = `存活${aliveEnemies}/${activeEnemies} 发现${discoveredEnemies}/${activeEnemies}`;
+
+            const text = `${cppRuntime.playerRoleName()} | HP ${playerHp}/${playerMaxHp} | 状态:${playerState} | ATK ${currentAttack}(${attackPercent}%) | 锁敌:${autoLock ? '开' : '关'} | 小技能:${smallActive ? `持续${smallLeft}` : '未激活'}/CD${smallCd} | 大技能CD${bigCd}${waveActive ? ' | 剑气推进中' : ''} | ${enemyName}x${enemyCount}: HP总量 ${totalEnemyHp}/${enemyMaxHp * activeEnemies} ATK ${enemyAtk} ${enemyStateSummary} | 当前位置: (${currentX}, ${currentY})`;
 
             if (text === state.lastStatusText && currentX === state.lastTileX && currentY === state.lastTileY) return;
 
@@ -1032,7 +1092,7 @@
 
             drawMap();
             updateSoldierPosition();
-            updateGoblinPosition();
+            updateEnemyPositions();
             updatePositionText();
             syncDeathOverlay();
             checkSpecialEvent();
@@ -1098,7 +1158,9 @@
                 cppRuntime.setViewport(state.viewportWidth, state.viewportHeight);
                 cppRuntime.setCollisionGrid(state.width, state.height, COLLISION_TILE_OFFSET_Y, solidGrid);
                 cppRuntime.setSpawn(SPAWN_TILE_X, SPAWN_TILE_Y);
-                cppRuntime.setEnemySpawn(GOBLIN_SPAWN_TILE_X, GOBLIN_SPAWN_TILE_Y);
+                for (let i = 0; i < ENEMY_SPAWNS.length; i++) {
+                    cppRuntime.setEnemySpawnAt(i, ENEMY_SPAWNS[i].x, ENEMY_SPAWNS[i].y);
+                }
                 cppRuntime.playerRevive(performance.now());
                 cppRuntime.centerCamera();
                 gameplayReady = true;
