@@ -1,5 +1,5 @@
 {
-    "activeFile": "demonstration.tsx",
+    "activeFile": "地牢2.tmx",
     "expandedProjectPaths": [
         "."
     ],
@@ -44,15 +44,15 @@
             "selectedLayer": 0,
             "viewCenter": {
                 "x": 513.9539239557969,
-                "y": 319.7602547293501
+                "y": 319.1608915527252
             }
         },
         "地牢2.tmx": {
-            "scale": 1.5,
+            "scale": 3,
             "selectedLayer": 0,
             "viewCenter": {
-                "x": 1103.6666666666665,
-                "y": 324.3333333333333
+                "x": 296.16666666666663,
+                "y": 455.8333333333333
             }
         },
         "地牢3.tmx": {
@@ -78,10 +78,10 @@
     "project": "thestart.tiled-project",
     "property.type": "bool",
     "recentFiles": [
+        "demonstration.tsx",
+        "地牢1.tmx",
         "地牢3.tmx",
         "地牢2.tmx",
-        "地牢1.tmx",
-        "demonstration.tsx",
         "C:/software/Tiled/map/demonstration.tsx",
         "C:/software/Tiled/map/地牢.tsx",
         "C:/software/Tiled/map/Dungeon_Tileset.tsx",

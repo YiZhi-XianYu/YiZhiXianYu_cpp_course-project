@@ -795,4 +795,16 @@ void PlayerController::finishMove(float nowMs,
     onTurnAdvanced();
 }
 
+void PlayerController::setPlayerHp(std::int32_t hp) {
+    currentHp_ = hp;
+    
+    // 同步更新死亡状态，防止出现 0 血还能走动的情况
+    if (currentHp_ <= 0) {
+        currentHp_ = 0;
+        dead_ = true;
+    } else {
+        dead_ = false;
+    }
+}
+
 } // namespace core

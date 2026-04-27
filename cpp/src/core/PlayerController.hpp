@@ -26,6 +26,7 @@ public:
     explicit PlayerController(PlayerConfig config, CharacterRole role = CharacterRole::plainPhysicalMage());
 
     void setSpawn(TilePos spawn);
+    void setPlayerHp(std::int32_t hp);
 
     void requestMove(std::int32_t dx, std::int32_t dy,
         float nowMs,

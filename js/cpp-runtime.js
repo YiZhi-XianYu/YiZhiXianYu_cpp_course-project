@@ -308,6 +308,8 @@ function createJsFallbackRuntime() {
         },
         playerRevive() {
         },
+        setPlayerHp(hp) {
+        },
         enemyTileX() {
             return 0;
         },
@@ -450,6 +452,7 @@ async function createCppRuntime() {
         requestBigSkill: module.cwrap('gc_request_big_skill', null, ['number']),
         setPlayerRole: module.cwrap('gc_set_player_role', null, ['number']),
         playerRevive: module.cwrap('gc_player_revive', null, ['number']),
+        setPlayerHp: module.cwrap('gc_player_set_hp', null, ['number']),
         update: module.cwrap('gc_update', null, ['number']),
         playerTileX: module.cwrap('gc_player_tile_x', 'number', []),
         playerTileY: module.cwrap('gc_player_tile_y', 'number', []),
@@ -672,6 +675,9 @@ async function createCppRuntime() {
         },
         playerRevive(nowMs) {
             api.playerRevive(nowMs);
+        },
+        setPlayerHp(hp) {
+            api.setPlayerHp(hp);
         },
         enemyTileX() {
             return api.enemyTileX();

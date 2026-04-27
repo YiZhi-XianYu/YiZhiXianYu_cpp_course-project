@@ -192,6 +192,24 @@
             }
         };
 
+        // 在约 100 行位置（获取 DOM 元素后）添加
+        function showPlayerBubble(text, duration = 3600) {
+            // 移除旧气泡
+            const oldBubble = soldierEl.querySelector('.thought-bubble');
+            if (oldBubble) oldBubble.remove();
+
+            console.log('[BUBBLE]', text);
+        
+            const bubble = document.createElement('div');
+            bubble.className = 'thought-bubble';
+            bubble.textContent = text;
+            soldierEl.appendChild(bubble);
+        
+            setTimeout(() => {
+                if (bubble.parentNode) bubble.remove();
+            }, duration);
+        }
+
 
         function updateDarkness() {
             if (!config.darknessRadius || !darknessOverlayEl) return;
@@ -1101,12 +1119,33 @@
 
             const playerTileX = cppRuntime.playerTileX();
             const playerTileY = cppRuntime.playerTileY();
+            const now = performance.now();
 
-            // 优先检查新增的 portals 数组
+            // --- 核心逻辑 1：在坐标 (5, 19) 捡起钥匙 ---
+            const hasKey = sessionStorage.getItem('yz_map03_key') === 'true';
+            if (config.mapFileName === 'map02.html' && playerTileX === 5 && playerTileY === 19 && !hasKey) {
+                console.log('[EVENT] 获取钥匙触发', { x: playerTileX, y: playerTileY });
+                sessionStorage.setItem('yz_map03_key', 'true');
+                showPlayerBubble("宝箱里竟然有钥匙，可能是通往某处的关键");
+                return; // 获得钥匙后直接返回，不触发传送
+            }
+
+            // --- 核心逻辑 2：检查传送门 ---
             const portals = config.portals || [];
             for (const portal of portals) {
                 if (playerTileX === portal.tile.x && playerTileY === portal.tile.y) {
-                    // 简单处理：如果是 armed 模式，需要玩家移动出传送门再进来
+                    
+                    // 如果踩中的门需要钥匙，且玩家没有钥匙
+                    if (portal.requireKey && !hasKey) {
+                        console.log('[EVENT] 门锁提示触发', { x: playerTileX, y: playerTileY, portal });
+                        // 适当拉长提示间隔，避免气泡刚消失就立刻重刷
+                        if (!state.lastKeyHintAt || now - state.lastKeyHintAt > 2800) {
+                            showPlayerBubble("门锁着，似乎需要某种钥匙...");
+                            state.lastKeyHintAt = now;
+                        }
+                        return; // 拦截传送
+                    }
+
                     if (config.specialEventMode === 'armed' && !specialEventArmed) {
                         continue; 
                     }
@@ -1116,7 +1155,7 @@
                 }
             }
         
-            // 兼容原有的单个触发点逻辑（可选）
+            // 兼容原有的单个触发点逻辑
             const reachedDefaultEvent = playerTileX === config.eventTile.x && playerTileY === config.eventTile.y;
             if (reachedDefaultEvent) {
                 if (config.specialEventMode === 'armed' && !specialEventArmed) return;
@@ -1258,6 +1297,11 @@
             const currentY = cppRuntime.playerTileY();
 
             const playerHp = cppRuntime.playerCurrentHp();
+
+            if (playerHp > 0) {
+                sessionStorage.setItem('yz_global_hp', playerHp);
+            }
+
             const playerMaxHp = cppRuntime.playerMaxHp();
             const playerDead = isPlayerDeadState();
             const playerHurt = cppRuntime.playerIsHurt();
@@ -1485,6 +1529,16 @@
                 }
 
                 cppRuntime.playerRevive(performance.now());
+
+                const savedHp = sessionStorage.getItem('yz_global_hp');
+                if (savedHp !== null) {
+                    const hpValue = parseInt(savedHp);
+                    // 只有当存档血量大于 0 时才应用，防止加载即阵亡
+                    if (hpValue > 0) {
+                        cppRuntime.setPlayerHp(hpValue);
+                    }
+                }
+
                 cppRuntime.centerCamera();
                 gameplayReady = true;
                 startupSafetyUntilMs = performance.now() + config.startupSafetyDurationMs;
@@ -1502,9 +1556,31 @@
                 checkSpecialEvent();
                 void startMapBgm();
 
+                if (config.mapFileName === 'map02.html') {
+                    // 延迟 500ms 弹出，确保加载完成后视觉效果更好
+                    setTimeout(() => showPlayerBubble("好黑啊……", 3800), 500);
+                }
+
+                if (config.mapFileName === 'map01.html') {
+                    const visitedMap01 = sessionStorage.getItem('yz_visited_map01') === 'true';
+                    if (!visitedMap01) {
+                        // 设置标记，确保本次会话（回到主界面前）不再重复弹出
+                        sessionStorage.setItem('yz_visited_map01', 'true');
+                        // 稍微加长显示时间（5000ms），方便玩家阅读长句子
+                        setTimeout(() => {
+                            showPlayerBubble("糟了……这座地牢貌似充满亡灵气息，一旦离开这层，怪物都会恢复原状", 5000);
+                        }, 800);
+                    }
+                }
+
                 reviveButtonEl.addEventListener('click', () => {
                     if (!cppRuntime) return;
                     cppRuntime.playerRevive(performance.now());
+
+                    const fullHp = cppRuntime.playerMaxHp();
+                    sessionStorage.setItem('yz_global_hp', fullHp);
+                    deathOverlayEl.hidden = true;
+
                     deathOverlayEl.hidden = true;
                     deathOverlayVisible = false;
                     state.playerDeathShown = false;

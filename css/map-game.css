@@ -76,6 +76,7 @@ canvas {
     transform: scale(calc(var(--sprite-scale) * var(--facing-x)), var(--sprite-scale));
     transform-origin: bottom center;
     pointer-events: none;
+    z-index: 12;
 }
 
 .soldier.is-idle {
@@ -338,4 +339,29 @@ canvas {
     to {
         background-position: calc(-1 * var(--frame-width) * 6) 0;
     }
+}
+
+/* 新增：角色对话/提示方框样式 */
+.thought-bubble {
+    position: absolute;
+    bottom: 50%; /* 贴近角色头部上方，避免飘得太高 */
+    left: 50%;
+    --bubble-transform: translateX(-50%) scale(calc(1 / var(--sprite-scale) * var(--facing-x)), calc(1 / var(--sprite-scale)));
+    transform: var(--bubble-transform);
+    background: rgba(18, 26, 43, 0.92);
+    border: 1px solid #a3b9ff;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #fff;
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 40;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    animation: bubble-fade-in 0.3s ease-out forwards;
+}
+
+@keyframes bubble-fade-in {
+    from { opacity: 0; transform: var(--bubble-transform) translateY(10px); }
+    to { opacity: 1; transform: var(--bubble-transform) translateY(0); }
 }

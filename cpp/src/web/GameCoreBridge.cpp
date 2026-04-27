@@ -1140,4 +1140,10 @@ GC_KEEPALIVE std::int32_t gc_enemy_attack_area_y_at(std::int32_t enemyIndex, std
     return tiles[static_cast<std::size_t>(tileIndex)].y;
 }
 
+GC_KEEPALIVE void gc_player_set_hp(std::int32_t hp) {
+    if (g_player) {
+        g_player->setPlayerHp(hp);
+    }
+}
+
 } // extern "C"
