@@ -449,7 +449,7 @@ void PlayerController::onTurnAdvanced() {
     if (archerBlessingActivateOnNextTurn_) {
         archerBlessingActivateOnNextTurn_ = false;
         archerBlessingActive_ = true;
-        archerBlessingTurnsLeft_ = 5;
+        archerBlessingTurnsLeft_ = 6;
         archerVolleyPending_ = false;
         return;
     }
@@ -715,17 +715,20 @@ void PlayerController::startBigSkillAction(float nowMs) {
 
     if (role_.kind() == RoleKind::LegendaryLineArcher) {
         bigSkillCooldownUntilTurn_ = turnCounter_ + 12;
-        attacking_ = true;
-        bigSkillCasting_ = true;
-        attackStartTimeMs_ = nowMs;
+        attacking_ = false;
+        bigSkillCasting_ = false;
+        attackStartTimeMs_ = 0.0f;
         attackImpactResolved_ = false;
         attackImpactConsumed_ = false;
-        attackVariant_ = 3;
+        attackVariant_ = 0;
         attackDamageScalePercent_ = 100;
         attackUsesAutoLock_ = false;
 
         archerBlessingActivateOnNextTurn_ = true;
         archerVolleyPending_ = false;
+        // 弓箭手大技能不播放攻击动作：直接结算“消耗本回合”，下一回合开始生效白光祝福。
+        onTurnAdvanced();
+        (void)nowMs;
         return;
     }
 
