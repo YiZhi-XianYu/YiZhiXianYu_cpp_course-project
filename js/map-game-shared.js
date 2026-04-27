@@ -62,7 +62,8 @@
         orcWalkSfxVolume: 0.2,
         orcWalkSfxStepIntervalMs: 280,
         startupSafetyDurationMs: 2000,
-        specialEventMode: 'cooldown'
+        specialEventMode: 'cooldown',
+        darknessRadius: 0
     };
 
     const FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
@@ -100,11 +101,36 @@
         const deathOverlayEl = document.getElementById('death-overlay');
         const reviveButtonEl = document.getElementById('revive-button');
         const exitButtonEl = document.getElementById('exit-button');
+        const darknessOverlayEl = document.getElementById('darkness-overlay');
 
-        const mapBgmAudio = new Audio(config.mapBgmSrc);
-        mapBgmAudio.loop = true;
+        // --- 新增：支持 BGM 数组轮播 ---
+        const bgmList = Array.isArray(config.mapBgmSrc) ? config.mapBgmSrc : [config.mapBgmSrc];
+        let currentBgmIndex = 0;
+        
+        const mapBgmAudio = new Audio(bgmList[currentBgmIndex]);
         mapBgmAudio.preload = 'auto';
         mapBgmAudio.volume = 0;
+
+        // 如果只有一首歌，直接使用原生循环；如果有两首及以上，则监听播放结束事件进行切歌
+        if (bgmList.length === 1) {
+            mapBgmAudio.loop = true;
+        } else {
+            mapBgmAudio.loop = false;
+            mapBgmAudio.addEventListener('ended', async () => {
+                if (mapBgmLeaving) return; // 如果正在切换地图，则不再切歌
+                
+                // 切换到下一首歌的索引，如果到底了就回到0
+                currentBgmIndex = (currentBgmIndex + 1) % bgmList.length;
+                mapBgmAudio.src = bgmList[currentBgmIndex];
+                mapBgmAudio.currentTime = 0;
+                
+                try {
+                    await mapBgmAudio.play();
+                } catch (error) {
+                    console.warn('[BGM] 轮播自动切歌失败:', error);
+                }
+            });
+        }
 
         let cppRuntime = null;
         let mapBgmFadeTimer = null;
@@ -165,6 +191,27 @@
                 list: []
             }
         };
+
+
+        function updateDarkness() {
+            if (!config.darknessRadius || !darknessOverlayEl) return;
+            
+            // 获取角色屏幕坐标
+            const px = cppRuntime.playerWorldX() - cppRuntime.cameraX();
+            // playerWorldY 是脚底坐标，减去半个格子的高度让光源对准身体中心
+            const py = cppRuntime.playerWorldY() - cppRuntime.cameraY() - (state.tileHeight * config.worldScale * 2);
+            
+            // 将格子半径转换为真实像素半径
+            const radiusInPx = config.darknessRadius * state.tileWidth * config.worldScale;
+            
+            // 使用 radial-gradient 创建手电筒般的透光效果
+            // 中心完全透明 -> 40%处微暗 -> 半径边缘接近纯黑 -> 外部全黑
+            darknessOverlayEl.style.background = `radial-gradient(circle at ${px}px ${py}px, 
+                rgba(0,0,0,0) 0%, 
+                rgba(0,0,0,0.1) ${radiusInPx * 0.4}px, 
+                rgba(0,0,0,0.96) ${radiusInPx}px, 
+                #000000 ${radiusInPx * 1.2}px)`;
+        }
 
         function clearMapBgmFadeTimer() {
             if (mapBgmFadeTimer) {
@@ -1025,7 +1072,7 @@
             }
         }
 
-        function triggerSpecialEvent() {
+        function triggerSpecialEvent(eventConfig) {
             const query = new URLSearchParams(window.location.search);
             const runToken = query.get('run');
             const sessionToken = query.get('session');
@@ -1035,15 +1082,17 @@
             if (runToken) params.push(`run=${encodeURIComponent(runToken)}`);
             if (sessionToken) params.push(`session=${encodeURIComponent(sessionToken)}`);
             if (role) params.push(`role=${encodeURIComponent(role)}`);
-            if (config.specialEventEntryTag) {
-                params.push(`entry=${encodeURIComponent(config.specialEventEntryTag)}`);
-            }
 
-            let target = config.specialEventTarget;
+            // 使用传入的 eventConfig
+            if (eventConfig.entryTag) {
+                params.push(`entry=${encodeURIComponent(eventConfig.entryTag)}`);
+            }
+        
+            let target = eventConfig.target;
             if (params.length > 0) {
-                target += `?${params.join('&')}`;
+                target += (target.includes('?') ? '&' : '?') + params.join('&');
             }
-
+        
             fadeOutMapBgmAndLeave(target);
         }
 
@@ -1052,28 +1101,35 @@
 
             const playerTileX = cppRuntime.playerTileX();
             const playerTileY = cppRuntime.playerTileY();
-            const reachedEvent = playerTileX === config.eventTile.x && playerTileY === config.eventTile.y;
 
-            if (config.specialEventMode === 'armed') {
-                if (reachedEvent) {
-                    if (specialEventArmed) {
-                        state.specialEventTriggered = true;
-                        triggerSpecialEvent();
+            // 优先检查新增的 portals 数组
+            const portals = config.portals || [];
+            for (const portal of portals) {
+                if (playerTileX === portal.tile.x && playerTileY === portal.tile.y) {
+                    // 简单处理：如果是 armed 模式，需要玩家移动出传送门再进来
+                    if (config.specialEventMode === 'armed' && !specialEventArmed) {
+                        continue; 
                     }
-                } else {
-                    specialEventArmed = true;
+                    state.specialEventTriggered = true;
+                    triggerSpecialEvent(portal);
+                    return;
                 }
-                return;
             }
-
-            if (config.specialEventMode === 'cooldown' && performance.now() < specialEventCooldownUntilMs) {
-                return;
-            }
-
-            if (reachedEvent) {
+        
+            // 兼容原有的单个触发点逻辑（可选）
+            const reachedDefaultEvent = playerTileX === config.eventTile.x && playerTileY === config.eventTile.y;
+            if (reachedDefaultEvent) {
+                if (config.specialEventMode === 'armed' && !specialEventArmed) return;
                 state.specialEventTriggered = true;
-                triggerSpecialEvent();
+                triggerSpecialEvent({
+                    target: config.specialEventTarget,
+                    entryTag: config.specialEventEntryTag
+                });
+                return;
             }
+        
+            // 如果不在任何传送门上，重置 armed 状态
+            specialEventArmed = true;
         }
 
         function drawMap() {
@@ -1335,6 +1391,7 @@
             updateArrowProjectiles(currentNow);
             updateSoldierPosition();
             updateEnemyPositions();
+            updateDarkness();
             updatePositionText();
             syncDeathOverlay();
             checkSpecialEvent();

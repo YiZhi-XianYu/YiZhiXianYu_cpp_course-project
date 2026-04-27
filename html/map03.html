@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地牢战斗 - Map 03</title>
+    <link rel="stylesheet" href="../css/map-game.css?v=20260427-2">
+</head>
+<body>
+    <main class="shell">
+        <div class="map-wrap" id="map-wrap">
+            <canvas id="map-canvas" aria-label="Dungeon map"></canvas>
+            <div id="enemy-layer" aria-hidden="true"></div>
+            <div class="soldier is-idle" id="soldier" aria-label="Soldier idle animation"></div>
+        </div>
+        <div class="status" id="status">加载地图中...</div>
+    </main>
+
+    <div class="death-overlay" id="death-overlay" hidden>
+        <div class="death-panel" role="dialog" aria-modal="true" aria-labelledby="death-title">
+            <h2 class="death-title" id="death-title">角色倒下了</h2>
+            <p class="death-text" id="death-text">你可以选择复活并继续战斗，或者退出当前页面。</p>
+            <div class="death-actions">
+                <button type="button" id="revive-button">复活</button>
+                <button type="button" class="exit" id="exit-button">退出</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../cpp/web/game_core.js?v=20260427-1"></script>
+    <script src="../js/cpp-runtime.js?v=20260427-1"></script>
+    <script src="../js/map-game-shared.js?v=20260427-4"></script>
+    <script>
+        startMapGame({
+            mapFileName: 'map03.html',
+            tmxPath: '../assets/map/地牢3.tmx',
+            
+            // --- 核心修改：将 BGM 改为数组，实现轮流播放 ---
+            mapBgmSrc: [
+                '../assets/bgm/地牢战斗bgm2.mp3', 
+                '../assets/bgm/地牢战斗bgm1.mp3'
+            ],
+            
+            // 地图3的出生点：正中间偏上一格
+            spawnTile: { x: 17, y: 18 }, 
+            // 可以在这里配置地图3的敌人
+            enemySpawns: [
+                /* { x: 15, y: 15 },
+                { x: 19, y: 15 } */
+            ],
+            // 地图3离开的触发点：正中间
+            eventTile: { x: 17, y: 19 },
+            // 目标是指向地图2
+            specialEventTarget: './map02.html',
+            specialEventEntryTag: 'map03',
+            specialEventMode: 'armed'
+        });
+    </script>
+</body>
+</html>

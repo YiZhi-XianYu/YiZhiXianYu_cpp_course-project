@@ -12,6 +12,7 @@
             <canvas id="map-canvas" aria-label="Dungeon map"></canvas>
             <div id="enemy-layer" aria-hidden="true"></div>
             <div class="soldier is-idle" id="soldier" aria-label="Soldier idle animation"></div>
+            <div id="darkness-overlay" style="position: absolute; inset: 0; pointer-events: none; z-index: 10;"></div>
         </div>
         <div class="status" id="status">加载地图中...</div>
     </main>
@@ -31,19 +32,43 @@
     <script src="../js/cpp-runtime.js?v=20260427-1"></script>
     <script src="../js/map-game-shared.js?v=20260427-4"></script>
     <script>
-        startMapGame({
-            mapFileName: 'map02.html',
-            tmxPath: '../assets/map/地牢2.tmx',
-            mapBgmSrc: '../assets/bgm/地牢脱战bgm2.mp3',
-            spawnTile: { x: 4, y: 4 },
-            enemySpawns: [
-                { x: 15, y: 5 }
-            ],
-            eventTile: { x: 4, y: 5 },
-            specialEventTarget: './map01.html',
-            specialEventEntryTag: 'map02',
-            specialEventMode: 'armed'
-        });
-    </script>
+    startMapGame({
+        mapFileName: 'map02.html',
+        tmxPath: '../assets/map/地牢2.tmx',
+        mapBgmSrc: '../assets/bgm/地牢脱战bgm2.mp3',
+        spawnTile: { x: 5, y: 5 },
+        
+        // 处理返回位置
+        returnEntryFrom: 'map03', 
+        returnSpawnTile: { x: 5, y: 12 }, 
+
+        enemySpawns: [
+            { x: 15, y: 5 }
+        ],
+
+        // --- 核心修改：定义多个传送门 ---
+        portals: [
+            {
+                // 去地图一的点位
+                tile: { x: 4, y: 5 },
+                target: './map01.html',
+                entryTag: 'map02'
+            },
+            {
+                // 去地图三的点位
+                tile: { x: 4, y: 12 },
+                target: './map03.html',
+                entryTag: 'map02'
+            }
+        ],
+
+        // 为了兼容性，保留以下必填项（可指向其中一个）
+        eventTile: { x: -1, y: -1 }, 
+        specialEventTarget: './map01.html',
+        specialEventMode: 'armed',
+
+        darknessRadius: 3
+    });
+</script>
 </body>
 </html>
