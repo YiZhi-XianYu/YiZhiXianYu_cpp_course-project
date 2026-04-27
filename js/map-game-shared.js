@@ -124,6 +124,7 @@
         let hasSeenPlayerAlive = false;
         let lastObservedHp = null;
         let deathByHpTransition = false;
+        let wasPlayerActing = false;
 
         soldierEl.style.setProperty('--attack-duration', `${config.attackDurationMs}ms`);
 
@@ -446,122 +447,29 @@
             );
             if (!attackTiles.length) return;
 
-            // 保持你精心微调过的 1.6 倍高度偏移
             const gridOffset = 1.6 * config.worldScale * state.tileHeight;
             const startX = cppRuntime.playerWorldX();
             const startY = cppRuntime.playerWorldY() - config.soldierFrame * 0.44 - gridOffset;
             const facingX = cppRuntime.playerFacingX() < 0 ? -1 : 1;
 
-            // ==== 小技能：反弹与散弹逻辑 ====
+            // ==== 小技能：简化后的贯穿穿透逻辑 ====
             if (isSmallSkill) {
-                let pathTiles = [];
-                let current = { x: cppRuntime.playerTileX(), y: cppRuntime.playerTileY() };
-                
-                let fx = Math.sign(attackTiles[0].x - current.x);
-                let fy = Math.sign(attackTiles[0].y - current.y);
-                if (fx === 0 && fy === 0) fx = facingX;
+                // 后端已经计算好了完美的穿透路径，我们直接把最后一个地块当作飞行终点
+                const targetTile = attackTiles[attackTiles.length - 1]; 
+                if (!targetTile) return;
 
-                let bounces = 0;
-                let hitEnemyPos = null;
-
-                for (let step = 1; step <= 15; ++step) {
-                    let next = { x: current.x + fx, y: current.y + fy };
-
-                    if (isSolidTileAt(next.x, next.y + config.collisionTileOffsetY)) {
-                        if (bounces >= 2) break;
-                        bounces++;
-
-                        let lx = fy, ly = -fx, rx = -fy, ry = fx; 
-                        let leftBlocked = isSolidTileAt(current.x + lx, current.y + ly + config.collisionTileOffsetY);
-                        let rightBlocked = isSolidTileAt(current.x + rx, current.y + ry + config.collisionTileOffsetY);
-
-                        if (leftBlocked && !rightBlocked) { fx = rx; fy = ry; } 
-                        else if (rightBlocked && !leftBlocked) { fx = lx; fy = ly; } 
-                        else { fx = -fx; fy = -fy; }
-                        
-                        next = { x: current.x + fx, y: current.y + fy };
-                        if (isSolidTileAt(next.x, next.y + config.collisionTileOffsetY)) break;
-                    }
-
-                    current = next;
-                    pathTiles.push(current);
-
-                    let hit = false;
-                    for (let i = 0; i < cppRuntime.enemyCount(); i++) {
-                        if (!cppRuntime.enemyIsRemovedAt(i) && !cppRuntime.enemyIsDeadAt(i)) {
-                            if (cppRuntime.enemyTileXAt(i) === current.x && cppRuntime.enemyTileYAt(i) === current.y) {
-                                hit = true; break;
-                            }
-                        }
-                    }
-                    if (hit) { hitEnemyPos = current; break; }
-                }
-
-                let segments = [{x: startX, y: startY}];
-                for(const t of pathTiles) {
-                    const tw = tileToWorldPoint(t.x, t.y);
-                    segments.push({x: tw.x, y: tw.y - config.soldierFrame * 0.44 - gridOffset});
-                }
+                const targetWorld = tileToWorldPoint(targetTile.x, targetTile.y);
+                const targetX = targetWorld.x;
+                const targetY = targetWorld.y - config.soldierFrame * 0.44 - gridOffset;
 
                 setTimeout(() => {
                     state.arrowShots.list.push({
                         startMs: performance.now(),
-                        durationMs: Math.max(80, config.attackDurationMs * 0.5),
-                        segments: segments,
+                        durationMs: Math.max(120, config.attackDurationMs * 0.5),
+                        startX, startY, targetX, targetY, facingX,
                         isSmallSkill: true
                     });
                 }, config.attackDurationMs * 0.8);
-
-                if (hitEnemyPos) {
-                    setTimeout(() => {
-                        const dx = [-1, 1, 0, 0, -1, 1, -1, 1];
-                        const dy = [0, 0, -1, 1, -1, -1, 1, 1];
-                        const spreadRange = 10;
-                        for(let d=0; d<8; d++) {
-                            const twStart = tileToWorldPoint(hitEnemyPos.x, hitEnemyPos.y);
-
-                            let endTile = null;
-                            for (let dist = 1; dist <= spreadRange; dist++) {
-                                const tx = hitEnemyPos.x + dx[d] * dist;
-                                const ty = hitEnemyPos.y + dy[d] * dist;
-
-                                if (isSolidTileAt(tx, ty + config.collisionTileOffsetY)) {
-                                    break;
-                                }
-
-                                endTile = { x: tx, y: ty };
-
-                                let hit = false;
-                                for (let i = 0; i < cppRuntime.enemyCount(); i++) {
-                                    if (!cppRuntime.enemyIsRemovedAt(i) && !cppRuntime.enemyIsDeadAt(i)) {
-                                        if (cppRuntime.enemyTileXAt(i) === tx && cppRuntime.enemyTileYAt(i) === ty) {
-                                            hit = true;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (hit) {
-                                    break;
-                                }
-                            }
-
-                            if (!endTile) {
-                                continue;
-                            }
-
-                            const twEnd = tileToWorldPoint(endTile.x, endTile.y);
-                            state.arrowShots.list.push({
-                                startMs: performance.now(),
-                                durationMs: 150, 
-                                startX: twStart.x,
-                                startY: twStart.y - config.soldierFrame * 0.44 - gridOffset,
-                                targetX: twEnd.x,
-                                targetY: twEnd.y - config.soldierFrame * 0.44 - gridOffset,
-                                isSmallSkill: false 
-                            });
-                        }
-                    }, config.attackDurationMs * 1.3);
-                }
                 return;
             }
 
@@ -581,6 +489,120 @@
                 });
             }, config.attackDurationMs * 0.8);
         }
+
+        // ==== 【修改】大技能：八向箭雨前端生成逻辑 (支持墙壁反弹动画) ====
+        function triggerEightWayArrows() {
+            if (!cppRuntime) return;
+
+            const gridOffset = 1.6 * config.worldScale * state.tileHeight;
+            const currentTileX = cppRuntime.playerTileX();
+            const currentTileY = cppRuntime.playerTileY();
+
+            const dirs = [
+                {x: -1, y: 0}, {x: 1, y: 0}, {x: 0, y: -1}, {x: 0, y: 1},
+                {x: -1, y: -1}, {x: 1, y: -1}, {x: -1, y: 1}, {x: 1, y: 1}
+            ];
+            
+            const maxRange = 10;
+
+            // 辅助函数1：检查某地块是否有存活敌人
+            const hasAliveEnemyAt = (x, y) => {
+                const enemyCount = cppRuntime.enemyCount();
+                for (let i = 0; i < enemyCount; i++) {
+                    if (!cppRuntime.enemyIsRemovedAt(i) && !cppRuntime.enemyIsDeadAt(i)) {
+                        if (cppRuntime.enemyTileXAt(i) === x && cppRuntime.enemyTileYAt(i) === y) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            };
+
+            // 辅助函数2：检查某地块是否是实体墙壁
+            const isBlocked = (x, y) => {
+                return isSolidTileAt(x, y + config.collisionTileOffsetY);
+            };
+
+            dirs.forEach(initialDir => {
+                let current = { x: currentTileX, y: currentTileY };
+                let dir = { x: initialDir.x, y: initialDir.y };
+                let turned = false;
+
+                // 记录箭矢飞行的每一个格子，形成多段路径
+                const tileSegments = [current];
+
+                // 完全模拟后端的物理反弹射线逻辑
+                for (let travelled = 0; travelled < maxRange; travelled++) {
+                    let next = { x: current.x + dir.x, y: current.y + dir.y };
+
+                    if (isBlocked(next.x, next.y)) {
+                        if (turned) break; // 已经拐过一次弯了，直接结束
+
+                        // 复杂的墙面法线反弹计算 (和 C++ 核心保持100%一致)
+                        if (dir.x !== 0 && dir.y !== 0) {
+                            const blockX = isBlocked(current.x + dir.x, current.y);
+                            const blockY = isBlocked(current.x, current.y + dir.y);
+                            if (blockX && blockY) {
+                                dir.x = -dir.x;
+                                dir.y = -dir.y;
+                            } else if (blockX && !blockY) {
+                                dir.x = -dir.x;
+                            } else if (!blockX && blockY) {
+                                dir.y = -dir.y;
+                            } else {
+                                dir.x = -dir.x;
+                                dir.y = -dir.y;
+                            }
+                        } else {
+                            dir.x = -dir.x;
+                            dir.y = -dir.y;
+                        }
+
+                        turned = true;
+                        next = { x: current.x + dir.x, y: current.y + dir.y };
+                        if (isBlocked(next.x, next.y)) {
+                            break; // 拐弯后下一格还是墙壁，彻底卡死
+                        }
+                    }
+
+                    current = next;
+                    tileSegments.push(current);
+
+                    if (hasAliveEnemyAt(current.x, current.y)) {
+                        break; // 击中敌人，停止穿透
+                    }
+                }
+
+                if (tileSegments.length > 1) {
+                    // 将格子路径转化为像素世界坐标系的多段点坐标
+                    const worldSegments = tileSegments.map(t => {
+                        const tw = tileToWorldPoint(t.x, t.y);
+                        return {
+                            x: tw.x,
+                            y: tw.y - config.soldierFrame * 0.44 - gridOffset
+                        };
+                    });
+
+                    // 动态计算总飞行时间，确保它就算拐弯也能保持视觉上的匀速
+                    const speedPerTileMs = 28; 
+                    const durationMs = Math.max(120, (tileSegments.length - 1) * speedPerTileMs);
+
+                    state.arrowShots.list.push({
+                        startMs: performance.now(),
+                        durationMs: durationMs,
+                        startX: worldSegments[0].x,
+                        startY: worldSegments[0].y,
+                        targetX: worldSegments[worldSegments.length - 1].x,
+                        targetY: worldSegments[worldSegments.length - 1].y,
+                        segments: worldSegments, // 将分段轨迹丢给渲染器
+                        isBigSkillVolley: true 
+                    });
+                }
+            });
+
+            playOneShotSfx(config.bowAttackSfxPaths, config.bowAttackSfxVolume * 0.8);
+        }
+
         function ensureArrowElements(count) {
             while (arrowEls.length < count) {
                 const el = document.createElement('div');
@@ -633,7 +655,11 @@
                 el.style.opacity = `${1 - progress * 0.15}`;
                 el.style.transform = `rotate(${angle}deg) scale(2, 2)`;
                 
-                if (shot.isSmallSkill) {
+                if (shot.isBigSkillVolley) {
+                    // 大技能箭雨：散发金色光芒
+                    el.style.filter = 'drop-shadow(0 0 6px #ffd659) drop-shadow(0 0 12px #ffaa00) brightness(1.5)';
+                } else if (shot.isSmallSkill) {
+                    // 小技能贯穿：高亮白光
                     el.style.filter = 'drop-shadow(0 0 8px white) drop-shadow(0 0 16px white) brightness(2)';
                 } else {
                     el.style.filter = 'none';
@@ -670,6 +696,13 @@
             const isAttacking = !isDead && !isHurt && cppRuntime.playerIsAttacking();
             const attackVariant = isAttacking ? cppRuntime.playerAttackVariant() : 0;
             const isWalking = !isDead && !isHurt && !isAttacking && cppRuntime.playerIsWalking();
+            const isActing = isAttacking || cppRuntime.playerIsMoving();
+            if (wasPlayerActing && !isActing) {
+                if (cppRuntime.playerArcherBlessingActive()) {
+                    triggerEightWayArrows();
+                }
+            }
+            wasPlayerActing = isActing;
             const smallSkillActive = cppRuntime.playerSmallSkillActive();
             const archerBlessingActive = cppRuntime.playerArcherBlessingActive();
 
@@ -1101,7 +1134,9 @@
             );
             if (attackTiles.length > 0) {
                 if (cppRuntime.playerSmallSkillActive()) {
-                    // 小技能扩散箭不绘制地块高亮，避免误导范围显示。
+                    const smallSkillTiles = attackTiles.map((tile) => ({ x: tile.x, y: tile.y - 2 }));
+                    // 渲染为白色高亮（rgba(255, 255, 255, 0.4)）
+                    drawTileHighlights(smallSkillTiles, 'rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 0.2)');
                 } else {
                     const normalAttackTiles = attackTiles.map((tile) => ({ x: tile.x, y: tile.y - 2 }));
                     drawTileHighlights(normalAttackTiles, 'rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.68)');

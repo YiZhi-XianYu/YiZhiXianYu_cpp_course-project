@@ -381,7 +381,7 @@ void resolvePlayerAttack(float nowMs) {
 
     if (g_player->role().kind() == RoleKind::LegendaryLineArcher) {
         // 小技能命中区域已在控制器中计算完成，按区域直接结算，不做“首目标中断”。
-        if (g_player->isSmallSkillActive()) {
+        if (g_player->attackDamageScalePercent() == 150) {
             for (const auto& enemy : g_enemies) {
                 if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
                 if (tileInArea(attackTiles, enemy->tilePos())) {

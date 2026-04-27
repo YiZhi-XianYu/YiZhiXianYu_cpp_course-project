@@ -659,130 +659,46 @@ void PlayerController::startSmallSkillAction(float nowMs,
     if (!smallSkillReady()) return;
 
     if (role_.kind() == RoleKind::LegendaryLineArcher) {
-        // 技能冷却 5 回合
-        smallSkillCooldownUntilTurn_ = turnCounter_ + 5;
-        
-        // 【核心修复】设置持续状态为 turnCounter_ + 2
-        // 只有 +2 才能保证这个状态在调用 onTurnAdvanced() 后，依然能在当前的攻击动画期间存活！
-        smallSkillActiveUntilTurn_ = turnCounter_ + 2;
+        // 【修改点1】极致爽快，CD 只要 2 回合！
+        smallSkillCooldownUntilTurn_ = turnCounter_ + 2;
 
         attacking_ = true;
         bigSkillCasting_ = false;
         attackStartTimeMs_ = nowMs;
         attackImpactResolved_ = false;
         attackImpactConsumed_ = false;
-        attackVariant_ = 3;  // 播放射箭动作
-        attackDamageScalePercent_ = 100; // 散弹视作平A伤害
+        attackVariant_ = 3;  
+        attackDamageScalePercent_ = 150; // 150% 伤害
         attackUsesAutoLock_ = false;
         archerSmallSkillAttack_ = true;
 
         cachedSmallSkillTiles_.clear();
         TilePos current = tilePos_;
         Facing currentFacing = facing_;
-        int bounces = 0;
-        bool hitEnemy = false;
-        TilePos enemyPos{};
 
-        // 1. 计算最多 15 格的反弹路径
-        for (int step = 1; step <= 15; ++step) {
+        // 识别“真正的墙壁”（忽略肉体）
+        auto isWall = [&](std::int32_t x, std::int32_t y) {
+            return isBlocked(x, y) && !hasEnemy(x, y);
+        };
+
+        // 【修改点2】直线 10 格，无情贯穿
+        for (int step = 1; step <= 10; ++step) {
             TilePos next = addTile(current, forwardVector(currentFacing));
 
-            if (isBlocked(next.x, next.y)) {
-                if (bounces >= 2) break; // 最多反转两次
-                bounces++;
-
-                TilePos leftDir = leftVector(currentFacing);
-                TilePos rightDir = rightVector(currentFacing);
-                TilePos leftTile = addTile(current, leftDir);
-                TilePos rightTile = addTile(current, rightDir);
-
-                bool leftBlocked = isBlocked(leftTile.x, leftTile.y);
-                bool rightBlocked = isBlocked(rightTile.x, rightTile.y);
-
-                // 转向逻辑
-                if (leftBlocked && !rightBlocked) {
-                    currentFacing = facingFromDirectionVector(rightDir);
-                } else if (rightBlocked && !leftBlocked) {
-                    currentFacing = facingFromDirectionVector(leftDir);
-                } else {
-                    currentFacing = facingFromDirectionVector(backwardVector(currentFacing)); // 掉头
-                }
-                
-                next = addTile(current, forwardVector(currentFacing));
-                if (isBlocked(next.x, next.y)) break; // 转向后还是墙则停止
+            // 撞到真墙壁才停下
+            if (isWall(next.x, next.y)) {
+                break; 
             }
 
+            // 无论是空地还是哥布林，一律碾过去并加入判定范围
             current = next;
             cachedSmallSkillTiles_.push_back(current);
-
-            // 检测命中
-            if (hasEnemy(current.x, current.y)) {
-                hitEnemy = true;
-                enemyPos = current;
-                break;
-            }
         }
 
-        // 2. 命中后生成 8 向散弹扩散
-        if (hitEnemy) {
-            int dx[] = {-1, 1, 0, 0, -1, 1, -1, 1};
-            int dy[] = {0, 0, -1, 1, -1, -1, 1, 1};
-            const std::int32_t range = std::max<std::int32_t>(1, role_.normalAttack().rangeTiles);
-            for (int d = 0; d < 8; ++d) {
-                int sx = dx[d];
-                int sy = dy[d];
-                bool turned = false;
-                TilePos origin = enemyPos;
-                TilePos current = origin;
-                for (int travelled = 0; travelled < range; ++travelled) {
-                    TilePos next{current.x + sx, current.y + sy};
+        // 不推回合，绝对不吞伤害
 
-                    if (isBlocked(next.x, next.y)) {
-                        if (!archerBlessingActive_ || turned) {
-                            break;
-                        }
-
-                        if (sx != 0 && sy != 0) {
-                            const bool blockX = isBlocked(current.x + sx, current.y);
-                            const bool blockY = isBlocked(current.x, current.y + sy);
-                            if (blockX && blockY) {
-                                sx = -sx;
-                                sy = -sy;
-                            } else if (blockX && !blockY) {
-                                sx = -sx;
-                            } else if (!blockX && blockY) {
-                                sy = -sy;
-                            } else {
-                                sx = -sx;
-                                sy = -sy;
-                            }
-                        } else {
-                            sx = -sx;
-                            sy = -sy;
-                        }
-
-                        turned = true;
-                        next = TilePos{current.x + sx, current.y + sy};
-                        if (isBlocked(next.x, next.y)) {
-                            break;
-                        }
-                    }
-
-                    current = next;
-                    cachedSmallSkillTiles_.push_back(current);
-
-                    // 扩散箭视作普通攻击：命中该方向首个敌人后停止继续穿透。
-                    if (hasEnemy(current.x, current.y)) {
-                        break;
-                    }
-                }
-            }
-        }
-
-        // 【非常重要】推动回合引擎，结算伤害并让怪物能做出反击
-        onTurnAdvanced();
     } else {
-        // 原版战士的技能逻辑保持不变
+        // 战士逻辑保持不变
         smallSkillCooldownUntilTurn_ = turnCounter_ + 17;
         smallSkillActiveUntilTurn_ = turnCounter_ + 11;
         attackDamageScalePercent_ = 150;
