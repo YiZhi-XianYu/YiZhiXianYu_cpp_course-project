@@ -1,444 +1,167 @@
-<!DOCTYPE html>
-<html lang="zh">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soldier Idle Test</title>
-    <style>
-        * {
-            box-sizing: border-box;
+(function () {
+    const DEFAULTS = {
+        tileSize: 32,
+        worldScale: 2,
+        moveDurationMs: 180,
+        attackDurationMs: 420,
+        goblinAttackDurationMs: 420,
+        viewportMarginX: 32,
+        viewportMarginY: 120,
+        cameraDeadzoneRatioX: 0.18,
+        cameraTopDeadzoneRatioY: 0.08,
+        cameraBottomDeadzoneRatioY: 0.48,
+        soldierFrame: 100,
+        soldierFeetOffsetY: 8,
+        goblinFrame: 100,
+        goblinAttackHighlightOffsetY: -2,
+        collisionTileOffsetY: -2,
+        mapBgmMaxVolume: 0.28,
+        mapBgmFadeDurationMs: 900,
+        mapBgmFadeStepMs: 50,
+        attackSfxPaths: [
+            '../assets/sound/07_human_atk_sword_1.wav',
+            '../assets/sound/07_human_atk_sword_2.wav',
+            '../assets/sound/07_human_atk_sword_3.wav'
+        ],
+        hurtSfxPaths: [
+            '../assets/sound/11_human_damage_1.wav',
+            '../assets/sound/11_human_damage_2.wav'
+        ],
+        deathSfxPath: '../assets/sound/14_human_death_spin.wav',
+        walkSfxPaths: [
+            '../assets/sound/16_human_walk_stone_1.wav',
+            '../assets/sound/16_human_walk_stone_2.wav',
+            '../assets/sound/16_human_walk_stone_3.wav'
+        ],
+        orcAttackSfxPaths: [
+            '../assets/sound/17_orc_atk_sword_1.wav',
+            '../assets/sound/17_orc_atk_sword_2.wav',
+            '../assets/sound/17_orc_atk_sword_3.wav'
+        ],
+        orcHurtSfxPaths: [
+            '../assets/sound/21_orc_damage_1.wav',
+            '../assets/sound/21_orc_damage_2.wav',
+            '../assets/sound/21_orc_damage_3.wav'
+        ],
+        orcDeathSfxPath: '../assets/sound/24_orc_death_spin.wav',
+        orcWalkSfxPaths: [
+            '../assets/sound/25_orc_walk_stone_1.wav',
+            '../assets/sound/25_orc_walk_stone_2.wav',
+            '../assets/sound/25_orc_walk_stone_3.wav'
+        ],
+        attackSfxVolume: 0.45,
+        hurtSfxVolume: 0.42,
+        deathSfxVolume: 0.5,
+        walkSfxVolume: 0.3,
+        walkSfxStepIntervalMs: 240,
+        orcAttackSfxVolume: 0.36,
+        orcHurtSfxVolume: 0.34,
+        orcDeathSfxVolume: 0.42,
+        orcWalkSfxVolume: 0.2,
+        orcWalkSfxStepIntervalMs: 280,
+        startupSafetyDurationMs: 2000,
+        specialEventMode: 'cooldown'
+    };
+
+    const FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
+    const FLIPPED_VERTICALLY_FLAG = 0x40000000;
+    const FLIPPED_DIAGONALLY_FLAG = 0x20000000;
+    const GID_CLEAR_FLAGS_MASK = ~(FLIPPED_HORIZONTALLY_FLAG | FLIPPED_VERTICALLY_FLAG | FLIPPED_DIAGONALLY_FLAG);
+
+    function buildExitTarget(runToken) {
+        let target = './index.html';
+        if (runToken) {
+            target += `?run=${encodeURIComponent(runToken)}`;
         }
+        return new URL(target, window.location.href).href;
+    }
 
-        body {
-            margin: 0;
-            min-height: 100dvh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #10131b;
-            color: #d8e5ff;
-            font-family: monospace;
-            overflow: hidden;
+    function startMapGame(userConfig) {
+        const config = {
+            ...DEFAULTS,
+            ...userConfig
+        };
+
+        if (!config.tmxPath || !config.mapBgmSrc || !config.spawnTile || !config.eventTile || !config.specialEventTarget) {
+            throw new Error('startMapGame 缺少必要配置项');
         }
-
-        .shell {
-            display: grid;
-            gap: 10px;
-            justify-items: center;
-        }
-
-        .map-wrap {
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 0 0 2px #263046, 0 12px 24px rgba(0, 0, 0, 0.45);
-            background: #25131A;
-        }
-
-        canvas {
-            display: block;
-            image-rendering: pixelated;
-        }
-
-        #enemy-layer {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-        }
-
-        .soldier {
-            --frame-width: 100px;
-            --frame-height: 100px;
-            --sprite-scale: 3;
-            --attack-duration: 420ms;
-            --facing-x: 1;
-
-            position: absolute;
-            width: var(--frame-width);
-            height: var(--frame-height);
-            background-repeat: no-repeat;
-            background-position: 0 0;
-            image-rendering: pixelated;
-            transform: scale(calc(var(--sprite-scale) * var(--facing-x)), var(--sprite-scale));
-            transform-origin: bottom center;
-            pointer-events: none;
-        }
-
-        .soldier.is-idle {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Idle.png');
-            animation: soldier-idle 0.8s steps(6) infinite;
-        }
-
-        .soldier.is-walking {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Walk.png');
-            animation: soldier-walk 0.7s steps(8) infinite;
-        }
-
-        .soldier.is-hurt {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Hurt.png');
-            animation: soldier-hurt 0.55s steps(6) 1 forwards;
-            filter: brightness(1.15) saturate(1.2);
-        }
-
-        .soldier.is-dead {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Death.png');
-            animation: soldier-death 0.95s steps(6) 1 forwards;
-            filter: grayscale(0.35) brightness(0.92);
-        }
-
-        .soldier.is-attacking-1 {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Attack01.png');
-            animation: soldier-attack var(--attack-duration) steps(6) 1;
-        }
-
-        .soldier.is-attacking-2 {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Attack02.png');
-            animation: soldier-attack var(--attack-duration) steps(6) 1;
-        }
-
-        .soldier.is-small-skill-active {
-            filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 8px rgba(255, 255, 255, 0.65));
-        }
-
-        .goblin {
-            --frame-width: 100px;
-            --frame-height: 100px;
-            --sprite-scale: 3;
-            --attack-duration: 1000ms;
-            --facing-x: -1;
-
-            position: absolute;
-            width: var(--frame-width);
-            height: var(--frame-height);
-            background-repeat: no-repeat;
-            background-position: 0 0;
-            image-rendering: pixelated;
-            transform: scale(calc(var(--sprite-scale) * var(--facing-x)), var(--sprite-scale));
-            transform-origin: bottom center;
-            pointer-events: none;
-        }
-
-        .goblin.is-idle {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Idle.png');
-            animation: goblin-idle 0.8s steps(6) infinite;
-        }
-
-        .goblin.is-attacking-1 {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Attack01.png');
-            animation: goblin-attack var(--attack-duration) steps(6) 1;
-        }
-
-        .goblin.is-attacking-2 {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Attack02.png');
-            animation: goblin-attack var(--attack-duration) steps(6) 1;
-        }
-
-        .goblin.is-hurt {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Hurt.png');
-            animation: goblin-hurt 0.55s steps(6) 1 forwards;
-            filter: brightness(1.12) saturate(1.15);
-        }
-
-        .goblin.is-dead {
-            background-image: url('./assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Death.png');
-            animation: goblin-death 0.95s steps(6) 1 forwards;
-            filter: grayscale(0.35) brightness(0.9);
-        }
-
-        .goblin.is-discovered {
-            filter: drop-shadow(0 0 3px rgba(255, 222, 80, 0.95)) drop-shadow(0 0 10px rgba(255, 214, 55, 0.9));
-        }
-
-        .sprite-hidden {
-            visibility: hidden;
-        }
-
-        .death-overlay {
-            position: fixed;
-            inset: 0;
-            display: grid;
-            place-items: center;
-            background: rgba(3, 8, 16, 0.68);
-            backdrop-filter: blur(6px);
-            z-index: 20;
-        }
-
-        .death-overlay[hidden] {
-            display: none !important;
-        }
-
-        .death-panel {
-            min-width: min(90vw, 340px);
-            padding: 20px;
-            border: 1px solid rgba(163, 185, 255, 0.25);
-            border-radius: 18px;
-            background: linear-gradient(180deg, rgba(22, 28, 44, 0.98), rgba(10, 12, 20, 0.98));
-            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
-            text-align: center;
-        }
-
-        .death-title {
-            margin: 0 0 10px;
-            font-size: 22px;
-            color: #ffd5dd;
-            letter-spacing: 0.08em;
-        }
-
-        .death-text {
-            margin: 0 0 16px;
-            color: #d8e5ff;
-            line-height: 1.6;
-        }
-
-        .death-actions {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-        }
-
-        .death-actions button {
-            min-width: 96px;
-            padding: 10px 16px;
-            border: 0;
-            border-radius: 999px;
-            cursor: pointer;
-            font: inherit;
-            color: #0b1020;
-            background: linear-gradient(180deg, #f0f5ff, #b9c9ff);
-        }
-
-        .death-actions button.exit {
-            color: #fff4f4;
-            background: linear-gradient(180deg, #ff7d7d, #d83d54);
-        }
-
-        .death-actions button:active {
-            transform: translateY(1px);
-        }
-
-        .hint,
-        .status {
-            opacity: 0.9;
-            font-size: 12px;
-            text-align: center;
-        }
-
-        .status {
-            color: #9fc1ff;
-        }
-
-        @keyframes soldier-idle {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 6) 0;
-            }
-        }
-
-        @keyframes soldier-walk {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 8) 0;
-            }
-        }
-
-        @keyframes soldier-attack {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 6) 0;
-            }
-        }
-
-        @keyframes soldier-hurt {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 6) 0;
-            }
-        }
-
-        @keyframes soldier-death {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 6) 0;
-            }
-        }
-
-        @keyframes goblin-idle {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 6) 0;
-            }
-        }
-
-        @keyframes goblin-attack {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 6) 0;
-            }
-        }
-
-        @keyframes goblin-hurt {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 6) 0;
-            }
-        }
-
-        @keyframes goblin-death {
-            from {
-                background-position: 0 0;
-            }
-            to {
-                background-position: calc(-1 * var(--frame-width) * 6) 0;
-            }
-        }
-    </style>
-</head>
-<body>
-    <main class="shell">
-        <div class="map-wrap" id="map-wrap">
-            <canvas id="map-canvas" aria-label="Dungeon map"></canvas>
-            <div id="enemy-layer" aria-hidden="true"></div>
-            <div class="soldier is-idle" id="soldier" aria-label="Soldier idle animation"></div>
-        </div>
-        <div class="status" id="status">加载地图中...</div>
-    </main>
-
-    <div class="death-overlay" id="death-overlay" hidden>
-        <div class="death-panel" role="dialog" aria-modal="true" aria-labelledby="death-title">
-            <h2 class="death-title" id="death-title">角色倒下了</h2>
-            <p class="death-text" id="death-text">你可以选择复活并继续战斗，或者退出当前页面。</p>
-            <div class="death-actions">
-                <button type="button" id="revive-button">复活</button>
-                <button type="button" class="exit" id="exit-button">退出</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="./cpp/web/game_core.js?v=20260425-5"></script>
-    <script src="./js/cpp-runtime.js?v=20260425-5"></script>
-    <script>
-        const TMX_PATH = './assets/map/地牢1.tmx';
-        const TILE_SIZE = 32;
-        const WORLD_SCALE = 2;
-        const MOVE_DURATION_MS = 180;
-        const ATTACK_DURATION_MS = 420;
-        const GOBLIN_ATTACK_DURATION_MS = 420;
-        const VIEWPORT_MARGIN_X = 32;
-        const VIEWPORT_MARGIN_Y = 120;
-        const CAMERA_DEADZONE_RATIO_X = 0.18;
-        const CAMERA_TOP_DEADZONE_RATIO_Y = 0.08;
-        const CAMERA_BOTTOM_DEADZONE_RATIO_Y = 0.48;
-        const SOLDIER_FRAME = 100;
-        const SOLDIER_FEET_OFFSET_Y = 8;
-        const SPAWN_TILE_X = 9;
-        const SPAWN_TILE_Y = 17;
-        const GOBLIN_FRAME = 100;
-        const GOBLIN_ATTACK_HIGHLIGHT_OFFSET_Y = -2;
-        const EVENT_TILE_X = 21;
-        const EVENT_TILE_Y = 4;
-        const RETURN_ENTRY_TILE_X = 20;
-        const RETURN_ENTRY_TILE_Y = 4;
-        const COLLISION_TILE_OFFSET_Y = -2;
-        const FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
-        const FLIPPED_VERTICALLY_FLAG = 0x40000000;
-        const FLIPPED_DIAGONALLY_FLAG = 0x20000000;
-        const GID_CLEAR_FLAGS_MASK = ~(FLIPPED_HORIZONTALLY_FLAG | FLIPPED_VERTICALLY_FLAG | FLIPPED_DIAGONALLY_FLAG);
 
         const canvas = document.getElementById('map-canvas');
         const ctx = canvas.getContext('2d');
         const mapWrap = document.getElementById('map-wrap');
         const soldierEl = document.getElementById('soldier');
         const enemyLayerEl = document.getElementById('enemy-layer');
+        const arrowLayerEl = document.createElement('div');
+        arrowLayerEl.className = 'arrow-layer';
+        mapWrap.appendChild(arrowLayerEl);
         const statusEl = document.getElementById('status');
         const deathOverlayEl = document.getElementById('death-overlay');
         const reviveButtonEl = document.getElementById('revive-button');
         const exitButtonEl = document.getElementById('exit-button');
-        const MAP_BGM_SRC = './assets/bgm/地牢脱战bgm1.mp3';
-        const MAP_BGM_MAX_VOLUME = 0.28;
-        const MAP_BGM_FADE_DURATION_MS = 900;
-        const MAP_BGM_FADE_STEP_MS = 50;
-        const mapBgmAudio = new Audio(MAP_BGM_SRC);
+
+        const mapBgmAudio = new Audio(config.mapBgmSrc);
         mapBgmAudio.loop = true;
         mapBgmAudio.preload = 'auto';
         mapBgmAudio.volume = 0;
-        const ATTACK_SFX_PATHS = [
-            './assets/sound/07_human_atk_sword_1.wav',
-            './assets/sound/07_human_atk_sword_2.wav',
-            './assets/sound/07_human_atk_sword_3.wav'
-        ];
-        const HURT_SFX_PATHS = [
-            './assets/sound/11_human_damage_1.wav',
-            './assets/sound/11_human_damage_2.wav'
-        ];
-        const DEATH_SFX_PATH = './assets/sound/14_human_death_spin.wav';
-        const WALK_SFX_PATHS = [
-            './assets/sound/16_human_walk_stone_1.wav',
-            './assets/sound/16_human_walk_stone_2.wav',
-            './assets/sound/16_human_walk_stone_3.wav'
-        ];
-        const ORC_ATTACK_SFX_PATHS = [
-            './assets/sound/17_orc_atk_sword_1.wav',
-            './assets/sound/17_orc_atk_sword_2.wav',
-            './assets/sound/17_orc_atk_sword_3.wav'
-        ];
-        const ORC_HURT_SFX_PATHS = [
-            './assets/sound/21_orc_damage_1.wav',
-            './assets/sound/21_orc_damage_2.wav',
-            './assets/sound/21_orc_damage_3.wav'
-        ];
-        const ORC_DEATH_SFX_PATH = './assets/sound/24_orc_death_spin.wav';
-        const ORC_WALK_SFX_PATHS = [
-            './assets/sound/25_orc_walk_stone_1.wav',
-            './assets/sound/25_orc_walk_stone_2.wav',
-            './assets/sound/25_orc_walk_stone_3.wav'
-        ];
-        const ATTACK_SFX_VOLUME = 0.45;
-        const HURT_SFX_VOLUME = 0.42;
-        const DEATH_SFX_VOLUME = 0.5;
-        const WALK_SFX_VOLUME = 0.3;
-        const WALK_SFX_STEP_INTERVAL_MS = 240;
-        const ORC_ATTACK_SFX_VOLUME = 0.36;
-        const ORC_HURT_SFX_VOLUME = 0.34;
-        const ORC_DEATH_SFX_VOLUME = 0.42;
-        const ORC_WALK_SFX_VOLUME = 0.2;
-        const ORC_WALK_SFX_STEP_INTERVAL_MS = 280;
 
         let cppRuntime = null;
         let mapBgmFadeTimer = null;
         let mapBgmLeaving = false;
+        let specialEventCooldownUntilMs = 0;
+        let specialEventArmed = false;
         let wasSoldierAttacking = false;
         let wasSoldierHurt = false;
         let wasSoldierDead = false;
         let wasSoldierWalking = false;
         let lastWalkSfxAt = 0;
         const enemyAudioStates = [];
-        let specialEventCooldownUntilMs = 0;
-        // 当前是否显示“死亡弹窗”。显示时会锁住玩家输入。
+
         let deathOverlayVisible = false;
         let gameplayReady = false;
-        // 开局保护窗口：在这段时间内会抑制死亡弹窗，避免初始化瞬时状态误触发。
         let startupSafetyUntilMs = 0;
-        // 是否已经观察到玩家处于“存活状态”（HP>0 且 !dead）。
         let hasSeenPlayerAlive = false;
-        // 上一帧记录的 HP，用于检测 HP 从正数跌到 0 的“死亡转移”。
         let lastObservedHp = null;
-        // 死亡弹窗门闩：仅当检测到真实 HP 死亡转移后才允许弹窗显示。
         let deathByHpTransition = false;
+
+        soldierEl.style.setProperty('--attack-duration', `${config.attackDurationMs}ms`);
+
+        const ENEMY_SPAWNS = Array.isArray(config.enemySpawns) ? config.enemySpawns : [];
+        const enemyEls = [];
+        const arrowEls = [];
+
+        const state = {
+            width: 0,
+            height: 0,
+            tileWidth: config.tileSize,
+            tileHeight: config.tileSize,
+            gids: [],
+            solidGids: new Set(),
+            hasExplicitSolidData: false,
+            tilesetFirstGid: 1,
+            tilesetColumns: 0,
+            tilesetTileCount: 0,
+            tilesetImage: null,
+            specialEventTriggered: false,
+            viewportWidth: 0,
+            viewportHeight: 0,
+            lastTileX: config.spawnTile.x,
+            lastTileY: config.spawnTile.y,
+            lastStatusText: '',
+            playerDeathShown: false,
+            waveFx: {
+                active: false,
+                x: 0,
+                y: 0,
+                targetX: 0,
+                targetY: 0,
+                facingX: 1,
+                facingY: 0,
+                trail: []
+            },
+            arrowShots: {
+                list: []
+            }
+        };
 
         function clearMapBgmFadeTimer() {
             if (mapBgmFadeTimer) {
@@ -456,8 +179,8 @@
                 return;
             }
 
-            const stepTime = MAP_BGM_FADE_STEP_MS;
-            const steps = Math.max(1, MAP_BGM_FADE_DURATION_MS / stepTime);
+            const stepTime = config.mapBgmFadeStepMs;
+            const steps = Math.max(1, config.mapBgmFadeDurationMs / stepTime);
             const volumeStep = (targetVolume - mapBgmAudio.volume) / steps;
 
             mapBgmFadeTimer = setInterval(() => {
@@ -492,7 +215,7 @@
                     mapBgmAudio.currentTime = 0;
                     mapBgmAudio.volume = 0;
                     await mapBgmAudio.play();
-                    fadeMapBgm(MAP_BGM_MAX_VOLUME);
+                    fadeMapBgm(config.mapBgmMaxVolume);
                 }
             } catch (error) {
                 console.warn('[BGM] 地图背景音乐播放被拦截，将等待首次交互后重试:', error);
@@ -542,7 +265,7 @@
         }
 
         function playRandomAttackSfx() {
-            playRandomSfx(ATTACK_SFX_PATHS, ATTACK_SFX_VOLUME);
+            playRandomSfx(config.attackSfxPaths, config.attackSfxVolume);
         }
 
         function getEnemyAudioState(index) {
@@ -559,52 +282,6 @@
             }
             return enemyAudioStates[index];
         }
-
-        soldierEl.style.setProperty('--attack-duration', `${ATTACK_DURATION_MS}ms`);
-        const ENEMY_SPAWNS = [
-            { x: 15, y: 16 },
-            { x: 18, y: 17 },
-            { x: 13, y: 16 },
-            { x: 17, y: 17 },
-            { x: 14, y: 9 },
-            { x: 15, y: 5 },
-            { x: 8, y: 3 },
-            { x: 10, y: 5 },
-            { x: 13, y: 3 },
-            { x: 16, y: 3 }
-        ];
-        const enemyEls = [];
-
-        const state = {
-            width: 0,
-            height: 0,
-            tileWidth: TILE_SIZE,
-            tileHeight: TILE_SIZE,
-            gids: [],
-            solidGids: new Set(),
-            hasExplicitSolidData: false,
-            tilesetFirstGid: 1,
-            tilesetColumns: 0,
-            tilesetTileCount: 0,
-            tilesetImage: null,
-            specialEventTriggered: false,
-            viewportWidth: 0,
-            viewportHeight: 0,
-            lastTileX: SPAWN_TILE_X,
-            lastTileY: SPAWN_TILE_Y,
-            lastStatusText: '',
-            playerDeathShown: false,
-            waveFx: {
-                active: false,
-                x: 0,
-                y: 0,
-                targetX: 0,
-                targetY: 0,
-                facingX: 1,
-                facingY: 0,
-                trail: []
-            }
-        };
 
         function parseCsvData(csvText) {
             return csvText
@@ -715,10 +392,6 @@
             return gid === 0;
         }
 
-        function isTileBlocked(x, y) {
-            return isSolidTileAt(x, y + COLLISION_TILE_OFFSET_Y);
-        }
-
         function setSoldierFacingByX(facingX) {
             soldierEl.style.setProperty('--facing-x', facingX < 0 ? '-1' : '1');
         }
@@ -727,20 +400,119 @@
             enemyEl.style.setProperty('--facing-x', facingX < 0 ? '-1' : '1');
         }
 
+        function tileToWorldPoint(tileX, tileY) {
+            return {
+                x: (tileX + 0.5) * state.tileWidth * config.worldScale,
+                y: ((tileY + 1) * state.tileHeight - config.soldierFeetOffsetY) * config.worldScale
+            };
+        }
+
+        function findArrowTargetTile(attackTiles) {
+            let fallbackTile = null;
+            for (let i = 0; i < attackTiles.length; i++) {
+                const tile = attackTiles[i];
+                fallbackTile = tile;
+
+                if (isSolidTileAt(tile.x, tile.y + config.collisionTileOffsetY)) {
+                    return tile;
+                }
+
+                const enemyCount = cppRuntime.enemyCount();
+                for (let enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
+                    if (cppRuntime.enemyIsRemovedAt(enemyIndex) || cppRuntime.enemyIsDeadAt(enemyIndex)) {
+                        continue;
+                    }
+                    if (
+                        cppRuntime.enemyTileXAt(enemyIndex) === tile.x
+                        && cppRuntime.enemyTileYAt(enemyIndex) === tile.y
+                    ) {
+                        return tile;
+                    }
+                }
+            }
+            return fallbackTile;
+        }
+
+        function beginArrowShot(nowMs) {
+            if (!cppRuntime) return;
+            const attackTiles = collectTileArea(
+                () => cppRuntime.playerAttackAreaCount(),
+                (index) => cppRuntime.playerAttackAreaX(index),
+                (index) => cppRuntime.playerAttackAreaY(index)
+            );
+            if (!attackTiles.length) return;
+
+            const targetTile = findArrowTargetTile(attackTiles);
+            if (!targetTile) return;
+
+            const startX = cppRuntime.playerWorldX();
+            const startY = cppRuntime.playerWorldY() - config.soldierFrame * 0.4;
+            const targetWorld = tileToWorldPoint(targetTile.x, targetTile.y);
+            const targetX = targetWorld.x;
+            const targetY = targetWorld.y - config.soldierFrame * 0.48;
+            const facingX = cppRuntime.playerFacingX() < 0 ? -1 : 1;
+
+            state.arrowShots.list.push({
+                startMs: nowMs,
+                durationMs: Math.max(80, config.attackDurationMs * 0.5),
+                startX,
+                startY,
+                targetX,
+                targetY,
+                facingX
+            });
+        }
+
+        function ensureArrowElements(count) {
+            while (arrowEls.length < count) {
+                const el = document.createElement('div');
+                el.className = 'arrow-projectile sprite-hidden';
+                arrowLayerEl.appendChild(el);
+                arrowEls.push(el);
+            }
+
+            for (let i = 0; i < arrowEls.length; i++) {
+                arrowEls[i].classList.toggle('sprite-hidden', i >= count);
+            }
+        }
+
+        function updateArrowProjectiles(nowMs) {
+            state.arrowShots.list = state.arrowShots.list.filter((shot) => nowMs - shot.startMs <= shot.durationMs);
+
+            ensureArrowElements(state.arrowShots.list.length);
+            if (!state.arrowShots.list.length) return;
+
+            const cameraX = cppRuntime.cameraX();
+            const cameraY = cppRuntime.cameraY();
+
+            for (let i = 0; i < state.arrowShots.list.length; i++) {
+                const shot = state.arrowShots.list[i];
+                const el = arrowEls[i];
+                const progress = Math.max(0, Math.min(1, (nowMs - shot.startMs) / shot.durationMs));
+                const x = shot.startX + (shot.targetX - shot.startX) * progress;
+                const y = shot.startY + (shot.targetY - shot.startY) * progress;
+                const dx = shot.targetX - shot.startX;
+                const dy = shot.targetY - shot.startY;
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                el.style.left = `${x - cameraX - 50}px`;
+                el.style.top = `${y - cameraY - 50}px`;
+                el.style.opacity = `${1 - progress * 0.15}`;
+                el.style.transform = `rotate(${angle}deg) scale(${2 * shot.facingX}, 2)`;
+            }
+        }
+
         function requestAttack() {
-            // 弹窗显示时禁止行动，避免“边弹窗边操作”。
             if (!cppRuntime || !gameplayReady || deathOverlayVisible || isPlayerDeadState()) return;
             cppRuntime.requestAttack(performance.now());
         }
 
         function requestSmallSkill() {
-            // 弹窗显示时禁止行动，避免“边弹窗边操作”。
             if (!cppRuntime || !gameplayReady || deathOverlayVisible || isPlayerDeadState()) return;
             cppRuntime.requestSmallSkill(performance.now());
         }
 
         function requestBigSkill() {
-            // 弹窗显示时禁止行动，避免“边弹窗边操作”。
             if (!cppRuntime || !gameplayReady || deathOverlayVisible || isPlayerDeadState()) return;
             cppRuntime.requestBigSkill(performance.now());
         }
@@ -763,32 +535,38 @@
 
             const showAttack01 = isAttacking && (smallSkillActive || attackVariant === 1);
             const showAttack02 = isAttacking && !smallSkillActive && attackVariant === 2;
+            const showAttack03 = isAttacking && !smallSkillActive && attackVariant === 3;
 
             soldierEl.classList.toggle('is-hurt', isHurt);
             soldierEl.classList.toggle('is-dead', isDead);
             soldierEl.classList.toggle('is-attacking-1', showAttack01);
             soldierEl.classList.toggle('is-attacking-2', showAttack02);
+            soldierEl.classList.toggle('is-attacking-3', showAttack03);
             soldierEl.classList.toggle('is-walking', isWalking);
             soldierEl.classList.toggle('is-idle', !isAttacking && !isWalking);
             soldierEl.classList.toggle('is-small-skill-active', smallSkillActive);
             soldierEl.classList.toggle('sprite-hidden', isDead && deathFinished);
 
             if (isAttacking && !wasSoldierAttacking) {
-                playRandomAttackSfx();
+                if (attackVariant === 3) {
+                    beginArrowShot(performance.now());
+                } else {
+                    playRandomAttackSfx();
+                }
             }
 
             if (isHurt && !wasSoldierHurt) {
-                playRandomSfx(HURT_SFX_PATHS, HURT_SFX_VOLUME);
+                playRandomSfx(config.hurtSfxPaths, config.hurtSfxVolume);
             }
 
             if (isDead && !wasSoldierDead) {
-                playOneShotSfx(DEATH_SFX_PATH, DEATH_SFX_VOLUME);
+                playOneShotSfx(config.deathSfxPath, config.deathSfxVolume);
             }
 
             if (isWalking) {
                 const now = performance.now();
-                if (!wasSoldierWalking || now - lastWalkSfxAt >= WALK_SFX_STEP_INTERVAL_MS) {
-                    playRandomSfx(WALK_SFX_PATHS, WALK_SFX_VOLUME);
+                if (!wasSoldierWalking || now - lastWalkSfxAt >= config.walkSfxStepIntervalMs) {
+                    playRandomSfx(config.walkSfxPaths, config.walkSfxVolume);
                     lastWalkSfxAt = now;
                 }
             } else {
@@ -805,7 +583,7 @@
             while (enemyEls.length < count) {
                 const el = document.createElement('div');
                 el.className = 'goblin is-idle';
-                el.style.setProperty('--attack-duration', `${GOBLIN_ATTACK_DURATION_MS}ms`);
+                el.style.setProperty('--attack-duration', `${config.goblinAttackDurationMs}ms`);
                 enemyLayerEl.appendChild(el);
                 enemyEls.push(el);
             }
@@ -850,20 +628,20 @@
             }
 
             if (isAttacking && !audioState.wasAttacking) {
-                playRandomSfx(ORC_ATTACK_SFX_PATHS, ORC_ATTACK_SFX_VOLUME);
+                playRandomSfx(config.orcAttackSfxPaths, config.orcAttackSfxVolume);
             }
 
             if (isHurt && !audioState.wasHurt) {
-                playRandomSfx(ORC_HURT_SFX_PATHS, ORC_HURT_SFX_VOLUME);
+                playRandomSfx(config.orcHurtSfxPaths, config.orcHurtSfxVolume);
             }
 
             if (isDead && !audioState.wasDead) {
-                playOneShotSfx(ORC_DEATH_SFX_PATH, ORC_DEATH_SFX_VOLUME);
+                playOneShotSfx(config.orcDeathSfxPath, config.orcDeathSfxVolume);
             }
 
             if (isWalking) {
-                if (!audioState.wasWalking || now - audioState.lastWalkSfxAt >= ORC_WALK_SFX_STEP_INTERVAL_MS) {
-                    playRandomSfx(ORC_WALK_SFX_PATHS, ORC_WALK_SFX_VOLUME);
+                if (!audioState.wasWalking || now - audioState.lastWalkSfxAt >= config.orcWalkSfxStepIntervalMs) {
+                    playRandomSfx(config.orcWalkSfxPaths, config.orcWalkSfxVolume);
                     audioState.lastWalkSfxAt = now;
                 }
             } else {
@@ -890,8 +668,8 @@
         function drawTileHighlights(tiles, fillStyle, strokeStyle) {
             if (!tiles.length) return;
 
-            const tileRenderWidth = state.tileWidth * WORLD_SCALE;
-            const tileRenderHeight = state.tileHeight * WORLD_SCALE;
+            const tileRenderWidth = state.tileWidth * config.worldScale;
+            const tileRenderHeight = state.tileHeight * config.worldScale;
             const cameraX = cppRuntime.cameraX();
             const cameraY = cppRuntime.cameraY();
 
@@ -930,8 +708,8 @@
                 ctx.stroke();
             }
 
-            const tileRenderWidth = state.tileWidth * WORLD_SCALE;
-            const tileRenderHeight = state.tileHeight * WORLD_SCALE;
+            const tileRenderWidth = state.tileWidth * config.worldScale;
+            const tileRenderHeight = state.tileHeight * config.worldScale;
 
             if (!waveTiles.length) {
                 state.waveFx.active = false;
@@ -988,8 +766,6 @@
                 state.waveFx.y += (targetY - state.waveFx.y) * smoothing;
             }
 
-            // 根据四格分布判断剑气方向：
-            // 右: maxX列只有1格; 左: minX列只有1格; 下: maxY行只有1格; 上: minY行只有1格。
             let countMinX = 0;
             let countMaxX = 0;
             let countMinY = 0;
@@ -1049,16 +825,16 @@
         }
 
         function getWorldWidth() {
-            return state.width * state.tileWidth * WORLD_SCALE;
+            return state.width * state.tileWidth * config.worldScale;
         }
 
         function getWorldHeight() {
-            return state.height * state.tileHeight * WORLD_SCALE;
+            return state.height * state.tileHeight * config.worldScale;
         }
 
         function resizeViewport() {
-            const desiredWidth = Math.floor(window.innerWidth - VIEWPORT_MARGIN_X);
-            const desiredHeight = Math.floor(window.innerHeight - VIEWPORT_MARGIN_Y);
+            const desiredWidth = Math.floor(window.innerWidth - config.viewportMarginX);
+            const desiredHeight = Math.floor(window.innerHeight - config.viewportMarginY);
             const worldWidth = getWorldWidth();
             const worldHeight = getWorldHeight();
 
@@ -1082,8 +858,11 @@
 
             if (runToken) params.push(`run=${encodeURIComponent(runToken)}`);
             if (sessionToken) params.push(`session=${encodeURIComponent(sessionToken)}`);
+            if (config.specialEventEntryTag) {
+                params.push(`entry=${encodeURIComponent(config.specialEventEntryTag)}`);
+            }
 
-            let target = './map02.html';
+            let target = config.specialEventTarget;
             if (params.length > 0) {
                 target += `?${params.join('&')}`;
             }
@@ -1093,10 +872,28 @@
 
         function checkSpecialEvent() {
             if (state.specialEventTriggered) return;
-            if (performance.now() < specialEventCooldownUntilMs) return;
+
             const playerTileX = cppRuntime.playerTileX();
             const playerTileY = cppRuntime.playerTileY();
-            if (playerTileX === EVENT_TILE_X && playerTileY === EVENT_TILE_Y) {
+            const reachedEvent = playerTileX === config.eventTile.x && playerTileY === config.eventTile.y;
+
+            if (config.specialEventMode === 'armed') {
+                if (reachedEvent) {
+                    if (specialEventArmed) {
+                        state.specialEventTriggered = true;
+                        triggerSpecialEvent();
+                    }
+                } else {
+                    specialEventArmed = true;
+                }
+                return;
+            }
+
+            if (config.specialEventMode === 'cooldown' && performance.now() < specialEventCooldownUntilMs) {
+                return;
+            }
+
+            if (reachedEvent) {
                 state.specialEventTriggered = true;
                 triggerSpecialEvent();
             }
@@ -1105,8 +902,8 @@
         function drawMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const tileRenderWidth = state.tileWidth * WORLD_SCALE;
-            const tileRenderHeight = state.tileHeight * WORLD_SCALE;
+            const tileRenderWidth = state.tileWidth * config.worldScale;
+            const tileRenderHeight = state.tileHeight * config.worldScale;
             const cameraX = cppRuntime.cameraX();
             const cameraY = cppRuntime.cameraY();
             const startX = Math.max(0, Math.floor(cameraX / tileRenderWidth));
@@ -1139,7 +936,6 @@
                         tileRenderWidth,
                         tileRenderHeight
                     );
-
                 }
             }
 
@@ -1180,7 +976,7 @@
                 for (let i = 0; i < enemyTiles.length; i++) {
                     enemyAttackTiles.push({
                         x: enemyTiles[i].x,
-                        y: enemyTiles[i].y + GOBLIN_ATTACK_HIGHLIGHT_OFFSET_Y
+                        y: enemyTiles[i].y + config.goblinAttackHighlightOffsetY
                     });
                 }
             }
@@ -1193,8 +989,8 @@
             const cameraX = cppRuntime.cameraX();
             const cameraY = cppRuntime.cameraY();
 
-            soldierEl.style.left = `${px - cameraX - SOLDIER_FRAME / 2}px`;
-            soldierEl.style.top = `${py - cameraY - SOLDIER_FRAME}px`;
+            soldierEl.style.left = `${px - cameraX - config.soldierFrame / 2}px`;
+            soldierEl.style.top = `${py - cameraY - config.soldierFrame}px`;
             setSoldierFacingByX(cppRuntime.playerFacingX());
             updateSoldierAnimation();
         }
@@ -1211,15 +1007,14 @@
                 const px = cppRuntime.enemyWorldXAt(i);
                 const py = cppRuntime.enemyWorldYAt(i);
 
-                enemyEl.style.left = `${px - cameraX - GOBLIN_FRAME / 2}px`;
-                enemyEl.style.top = `${py - cameraY - GOBLIN_FRAME}px`;
+                enemyEl.style.left = `${px - cameraX - config.goblinFrame / 2}px`;
+                enemyEl.style.top = `${py - cameraY - config.goblinFrame}px`;
                 setGoblinFacingByX(enemyEl, cppRuntime.enemyFacingXAt(i));
                 updateEnemyAnimationAt(enemyEl, i, px, py, now);
             }
         }
 
         function movePlayer(dx, dy) {
-            // 弹窗显示时禁止移动。
             if (!cppRuntime || !gameplayReady || deathOverlayVisible || isPlayerDeadState()) return;
             cppRuntime.requestMove(dx, dy, performance.now());
         }
@@ -1283,7 +1078,6 @@
             if (!cppRuntime || !gameplayReady) return;
 
             const now = performance.now();
-            // 开局保护窗口内：强制不显示死亡弹窗。
             if (now < startupSafetyUntilMs) {
                 if (deathOverlayVisible) {
                     deathOverlayEl.hidden = true;
@@ -1296,7 +1090,6 @@
             const playerDead = isPlayerDeadState();
             const deathFinished = cppRuntime.playerDeathFinished();
 
-            // 玩家不在死亡态时，确保弹窗关闭。
             if (!playerDead) {
                 if (deathOverlayVisible) {
                     deathOverlayEl.hidden = true;
@@ -1306,19 +1099,16 @@
                 return;
             }
 
-            // 只有检测到真实死亡转移（HP 正数 -> 0）后才允许弹窗显示。
             if (!deathByHpTransition) {
                 return;
             }
 
-            // 等死亡动画播完，再弹出“复活/退出”选择。
             if (playerDead && deathFinished) {
                 if (!deathOverlayVisible) {
                     deathOverlayEl.hidden = false;
                     deathOverlayVisible = true;
                 }
                 state.playerDeathShown = true;
-                return;
             }
         }
 
@@ -1341,7 +1131,7 @@
                 if (lastObservedHp !== hpNow && currentNow > 100) {
                     console.log(`[HP变化] 时间: ${currentNow.toFixed(0)}ms, 血量从 ${lastObservedHp} 变成了 ${hpNow}`);
                 }
-                // 真实死亡判据：上一帧 HP>0，当前 HP<=0（且已过开局保护窗口）。
+
                 if (
                     hasSeenPlayerAlive &&
                     currentNow >= startupSafetyUntilMs &&
@@ -1349,7 +1139,7 @@
                     lastObservedHp > 0 &&
                     hpNow <= 0
                 ) {
-                    console.log('Player died! HP went from', lastObservedHp, 'to', hpNow)
+                    console.log('Player died! HP went from', lastObservedHp, 'to', hpNow);
                     deathByHpTransition = true;
                 }
 
@@ -1361,6 +1151,7 @@
             }
 
             drawMap();
+            updateArrowProjectiles(currentNow);
             updateSoldierPosition();
             updateEnemyPositions();
             updatePositionText();
@@ -1377,18 +1168,18 @@
             try {
                 cppRuntime = await createCppRuntime();
                 cppRuntime.init({
-                    tileWidth: TILE_SIZE,
-                    tileHeight: TILE_SIZE,
-                    worldScale: WORLD_SCALE,
-                    feetOffsetY: SOLDIER_FEET_OFFSET_Y,
-                    moveDurationMs: MOVE_DURATION_MS,
-                    attackDurationMs: ATTACK_DURATION_MS,
-                    deadZoneRatioX: CAMERA_DEADZONE_RATIO_X,
-                    topDeadZoneRatioY: CAMERA_TOP_DEADZONE_RATIO_Y,
-                    bottomDeadZoneRatioY: CAMERA_BOTTOM_DEADZONE_RATIO_Y
+                    tileWidth: config.tileSize,
+                    tileHeight: config.tileSize,
+                    worldScale: config.worldScale,
+                    feetOffsetY: config.soldierFeetOffsetY,
+                    moveDurationMs: config.moveDurationMs,
+                    attackDurationMs: config.attackDurationMs,
+                    deadZoneRatioX: config.cameraDeadzoneRatioX,
+                    topDeadZoneRatioY: config.cameraTopDeadzoneRatioY,
+                    bottomDeadZoneRatioY: config.cameraBottomDeadzoneRatioY
                 });
 
-                const tmxText = await fetch(TMX_PATH).then((r) => r.text());
+                const tmxText = await fetch(config.tmxPath).then((r) => r.text());
                 const mapDoc = new DOMParser().parseFromString(tmxText, 'text/xml');
                 const mapNode = mapDoc.querySelector('map');
 
@@ -1396,8 +1187,8 @@
 
                 state.width = Number(mapNode.getAttribute('width'));
                 state.height = Number(mapNode.getAttribute('height'));
-                state.tileWidth = Number(mapNode.getAttribute('tilewidth')) || TILE_SIZE;
-                state.tileHeight = Number(mapNode.getAttribute('tileheight')) || TILE_SIZE;
+                state.tileWidth = Number(mapNode.getAttribute('tilewidth')) || config.tileSize;
+                state.tileHeight = Number(mapNode.getAttribute('tileheight')) || config.tileSize;
 
                 const layer = mapDoc.querySelector('layer data');
                 if (!layer) throw new Error('TMX 缺少图层数据');
@@ -1410,7 +1201,7 @@
                     const source = tilesetNode.getAttribute('source');
 
                     if (source) {
-                        const tsxUrl = new URL(source, new URL(TMX_PATH, window.location.href)).href;
+                        const tsxUrl = new URL(source, new URL(config.tmxPath, window.location.href)).href;
                         state.solidGids = await loadTilesetData(tsxUrl, firstGid);
                     }
                 }
@@ -1426,22 +1217,31 @@
 
                 cppRuntime.setWorld(getWorldWidth(), getWorldHeight());
                 cppRuntime.setViewport(state.viewportWidth, state.viewportHeight);
-                cppRuntime.setCollisionGrid(state.width, state.height, COLLISION_TILE_OFFSET_Y, solidGrid);
+                cppRuntime.setCollisionGrid(state.width, state.height, config.collisionTileOffsetY, solidGrid);
+
                 const entryParams = new URLSearchParams(window.location.search);
-                const isReturningFromMap02 = entryParams.get('entry') === 'map02';
-                const spawnTileX = isReturningFromMap02 ? RETURN_ENTRY_TILE_X : SPAWN_TILE_X;
-                const spawnTileY = isReturningFromMap02 ? RETURN_ENTRY_TILE_Y : SPAWN_TILE_Y;
-                if (isReturningFromMap02) {
+                const entry = entryParams.get('entry');
+                let spawnTileX = config.spawnTile.x;
+                let spawnTileY = config.spawnTile.y;
+                if (
+                    config.returnEntryFrom &&
+                    config.returnSpawnTile &&
+                    entry === config.returnEntryFrom
+                ) {
+                    spawnTileX = config.returnSpawnTile.x;
+                    spawnTileY = config.returnSpawnTile.y;
                     specialEventCooldownUntilMs = performance.now();
                 }
+
                 cppRuntime.setSpawn(spawnTileX, spawnTileY);
                 for (let i = 0; i < ENEMY_SPAWNS.length; i++) {
                     cppRuntime.setEnemySpawnAt(i, ENEMY_SPAWNS[i].x, ENEMY_SPAWNS[i].y);
                 }
+
                 cppRuntime.playerRevive(performance.now());
                 cppRuntime.centerCamera();
                 gameplayReady = true;
-                startupSafetyUntilMs = performance.now() + 2000;
+                startupSafetyUntilMs = performance.now() + config.startupSafetyDurationMs;
                 hasSeenPlayerAlive = false;
                 lastObservedHp = cppRuntime.playerCurrentHp();
                 deathByHpTransition = false;
@@ -1458,7 +1258,6 @@
 
                 reviveButtonEl.addEventListener('click', () => {
                     if (!cppRuntime) return;
-                    // 复活：重置弹窗相关状态，恢复可行动。
                     cppRuntime.playerRevive(performance.now());
                     deathOverlayEl.hidden = true;
                     deathOverlayVisible = false;
@@ -1469,19 +1268,10 @@
                 });
 
                 exitButtonEl.addEventListener('click', () => {
-                    // 退出：关闭弹窗并返回首页。
                     deathOverlayEl.hidden = true;
                     deathOverlayVisible = false;
                     const runToken = new URLSearchParams(window.location.search).get('run');
-                    let target = './index.html';
-                    if (runToken) {
-                        target += `?run=${encodeURIComponent(runToken)}`;
-                    }
-                    if (window.location.protocol === 'file:') {
-                        target = window.location.href.replace(/\/map01\.html(?:\?.*)?$/i, `/index.html${runToken ? `?run=${encodeURIComponent(runToken)}` : ''}`);
-                    } else {
-                        target = `${window.location.origin}/index.html${runToken ? `?run=${encodeURIComponent(runToken)}` : ''}`;
-                    }
+                    const target = buildExitTarget(runToken);
                     fadeOutMapBgmAndLeave(target);
                 });
 
@@ -1529,6 +1319,7 @@
         window.addEventListener('pagehide', stopMapBgmImmediate);
 
         init();
-    </script>
-</body>
-</html>
+    }
+
+    window.startMapGame = startMapGame;
+})();

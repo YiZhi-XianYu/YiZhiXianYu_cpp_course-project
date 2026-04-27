@@ -12,13 +12,17 @@
 
 namespace {
 
-std::filesystem::path findIndexHtml() {
+std::filesystem::path findProjectRoot() {
     auto current = std::filesystem::current_path();
 
     for (int depth = 0; depth < 8; ++depth) {
-        const auto candidate = current / "index.html";
-        if (std::filesystem::exists(candidate)) {
-            return std::filesystem::absolute(candidate);
+        const auto htmlIndex = current / "html" / "index.html";
+        const auto rootIndex = current / "index.html";
+        const auto cppMain = current / "cpp" / "src" / "main.cpp";
+
+        if (std::filesystem::exists(cppMain) &&
+            (std::filesystem::exists(htmlIndex) || std::filesystem::exists(rootIndex))) {
+            return std::filesystem::absolute(current);
         }
 
         if (!current.has_parent_path()) break;
@@ -278,13 +282,22 @@ bool startLocalServer(const std::filesystem::path& rootDir, int* selectedPort) {
 } // namespace
 
 int main() {
-    const auto indexPath = findIndexHtml();
-    if (indexPath.empty()) {
-        std::cerr << "未找到 index.html\n";
+    const auto rootDir = findProjectRoot();
+    if (rootDir.empty()) {
+        std::cerr << "未找到项目根目录（需要 html/index.html 或 index.html）\n";
         return 1;
     }
 
-    const auto rootDir = indexPath.parent_path();
+    const auto htmlIndexPath = rootDir / "html" / "index.html";
+    const auto legacyIndexPath = rootDir / "index.html";
+    const auto indexPath = std::filesystem::exists(htmlIndexPath) ? htmlIndexPath : legacyIndexPath;
+    const bool useHtmlSubdir = std::filesystem::exists(htmlIndexPath);
+
+    if (!std::filesystem::exists(indexPath)) {
+        std::cerr << "未找到入口页面（html/index.html 或 index.html）\n";
+        return 1;
+    }
+
     if (!buildWasmModule(rootDir)) {
         std::cerr << "启动前自动构建 wasm 失败，游戏未启动。\n";
         return 4;
@@ -303,7 +316,8 @@ int main() {
     std::this_thread::sleep_for(std::chrono::milliseconds(1200));
     const std::wstring runToken = buildRunToken();
     const std::wstring browserUrl =
-        L"http://127.0.0.1:" + std::to_wstring(selectedPort) + L"/index.html?run=" + runToken;
+        L"http://127.0.0.1:" + std::to_wstring(selectedPort) +
+        (useHtmlSubdir ? L"/html/index.html?run=" : L"/index.html?run=") + runToken;
     if (!openInBrowser(browserUrl)) {
         std::cerr << "无法打开浏览器地址: " << std::string(browserUrl.begin(), browserUrl.end()) << "\n";
         return 3;

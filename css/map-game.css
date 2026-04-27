@@ -1,0 +1,337 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100dvh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #10131b;
+    color: #d8e5ff;
+    font-family: monospace;
+    overflow: hidden;
+}
+
+.shell {
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+}
+
+.map-wrap {
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 0 2px #263046, 0 12px 24px rgba(0, 0, 0, 0.45);
+    background: #25131A;
+}
+
+canvas {
+    display: block;
+    image-rendering: pixelated;
+}
+
+#enemy-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.arrow-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.arrow-projectile {
+    --frame-width: 100px;
+    --frame-height: 100px;
+    --sprite-scale: 2;
+
+    position: absolute;
+    width: var(--frame-width);
+    height: var(--frame-height);
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Arrow(Projectile)/Arrow01(100x100).png');
+    background-repeat: no-repeat;
+    background-position: 0 0;
+    image-rendering: pixelated;
+    transform-origin: center center;
+    pointer-events: none;
+}
+
+.soldier {
+    --frame-width: 100px;
+    --frame-height: 100px;
+    --sprite-scale: 3;
+    --attack-duration: 420ms;
+    --facing-x: 1;
+
+    position: absolute;
+    width: var(--frame-width);
+    height: var(--frame-height);
+    background-repeat: no-repeat;
+    background-position: 0 0;
+    image-rendering: pixelated;
+    transform: scale(calc(var(--sprite-scale) * var(--facing-x)), var(--sprite-scale));
+    transform-origin: bottom center;
+    pointer-events: none;
+}
+
+.soldier.is-idle {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Idle.png');
+    animation: soldier-idle 0.8s steps(6) infinite;
+}
+
+.soldier.is-walking {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Walk.png');
+    animation: soldier-walk 0.7s steps(8) infinite;
+}
+
+.soldier.is-hurt {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Hurt.png');
+    animation: soldier-hurt 0.55s steps(6) 1 forwards;
+    filter: brightness(1.15) saturate(1.2);
+}
+
+.soldier.is-dead {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Death.png');
+    animation: soldier-death 0.95s steps(6) 1 forwards;
+    filter: grayscale(0.35) brightness(0.92);
+}
+
+.soldier.is-attacking-1 {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Attack01.png');
+    animation: soldier-attack var(--attack-duration) steps(6) 1;
+}
+
+.soldier.is-attacking-2 {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Attack02.png');
+    animation: soldier-attack var(--attack-duration) steps(6) 1;
+}
+
+.soldier.is-attacking-3 {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Attack03.png');
+    animation: soldier-attack-03 var(--attack-duration) steps(9) 1;
+}
+
+.soldier.is-small-skill-active {
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 8px rgba(255, 255, 255, 0.65));
+}
+
+.goblin {
+    --frame-width: 100px;
+    --frame-height: 100px;
+    --sprite-scale: 3;
+    --attack-duration: 1000ms;
+    --facing-x: -1;
+
+    position: absolute;
+    width: var(--frame-width);
+    height: var(--frame-height);
+    background-repeat: no-repeat;
+    background-position: 0 0;
+    image-rendering: pixelated;
+    transform: scale(calc(var(--sprite-scale) * var(--facing-x)), var(--sprite-scale));
+    transform-origin: bottom center;
+    pointer-events: none;
+}
+
+.goblin.is-idle {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Idle.png');
+    animation: goblin-idle 0.8s steps(6) infinite;
+}
+
+.goblin.is-attacking-1 {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Attack01.png');
+    animation: goblin-attack var(--attack-duration) steps(6) 1;
+}
+
+.goblin.is-attacking-2 {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Attack02.png');
+    animation: goblin-attack var(--attack-duration) steps(6) 1;
+}
+
+.goblin.is-hurt {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Hurt.png');
+    animation: goblin-hurt 0.55s steps(6) 1 forwards;
+    filter: brightness(1.12) saturate(1.15);
+}
+
+.goblin.is-dead {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc with shadows/Orc-Death.png');
+    animation: goblin-death 0.95s steps(6) 1 forwards;
+    filter: grayscale(0.35) brightness(0.9);
+}
+
+.goblin.is-discovered {
+    filter: drop-shadow(0 0 3px rgba(255, 222, 80, 0.95)) drop-shadow(0 0 10px rgba(255, 214, 55, 0.9));
+}
+
+.sprite-hidden {
+    visibility: hidden;
+}
+
+.death-overlay {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(3, 8, 16, 0.68);
+    backdrop-filter: blur(6px);
+    z-index: 20;
+}
+
+.death-overlay[hidden] {
+    display: none !important;
+}
+
+.death-panel {
+    min-width: min(90vw, 340px);
+    padding: 20px;
+    border: 1px solid rgba(163, 185, 255, 0.25);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(22, 28, 44, 0.98), rgba(10, 12, 20, 0.98));
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+.death-title {
+    margin: 0 0 10px;
+    font-size: 22px;
+    color: #ffd5dd;
+    letter-spacing: 0.08em;
+}
+
+.death-text {
+    margin: 0 0 16px;
+    color: #d8e5ff;
+    line-height: 1.6;
+}
+
+.death-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.death-actions button {
+    min-width: 96px;
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+    font: inherit;
+    color: #0b1020;
+    background: linear-gradient(180deg, #f0f5ff, #b9c9ff);
+}
+
+.death-actions button.exit {
+    color: #fff4f4;
+    background: linear-gradient(180deg, #ff7d7d, #d83d54);
+}
+
+.death-actions button:active {
+    transform: translateY(1px);
+}
+
+.hint,
+.status {
+    opacity: 0.9;
+    font-size: 12px;
+    text-align: center;
+}
+
+.status {
+    color: #9fc1ff;
+}
+
+@keyframes soldier-idle {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 6) 0;
+    }
+}
+
+@keyframes soldier-walk {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 8) 0;
+    }
+}
+
+@keyframes soldier-attack {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 6) 0;
+    }
+}
+
+@keyframes soldier-attack-03 {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 9) 0;
+    }
+}
+
+@keyframes soldier-hurt {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 6) 0;
+    }
+}
+
+@keyframes soldier-death {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 6) 0;
+    }
+}
+
+@keyframes goblin-idle {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 6) 0;
+    }
+}
+
+@keyframes goblin-attack {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 6) 0;
+    }
+}
+
+@keyframes goblin-hurt {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 6) 0;
+    }
+}
+
+@keyframes goblin-death {
+    from {
+        background-position: 0 0;
+    }
+    to {
+        background-position: calc(-1 * var(--frame-width) * 6) 0;
+    }
+}

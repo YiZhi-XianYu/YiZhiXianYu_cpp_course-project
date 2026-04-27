@@ -28,19 +28,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ================= BGM 音乐系统逻辑 =================
 const dayBgmPaths = [
-    'assets/bgm/daybgm1.mp3',
-    'assets/bgm/daybgm2.mp3',
-    'assets/bgm/daybgm3.mp3',
-    'assets/bgm/daybgm4.mp3',
-    'assets/bgm/daybgm5.mp3'
+    '../assets/bgm/daybgm1.mp3',
+    '../assets/bgm/daybgm2.mp3',
+    '../assets/bgm/daybgm3.mp3',
+    '../assets/bgm/daybgm4.mp3',
+    '../assets/bgm/daybgm5.mp3'
 ];
 
 const nightBgmPaths = [
-    'assets/bgm/nightbgm1.mp3',
-    'assets/bgm/nightbgm2.mp3',
-    'assets/bgm/nightbgm3.mp3',
-    'assets/bgm/nightbgm4.mp3',
-    'assets/bgm/nightbgm5.mp3'
+    '../assets/bgm/nightbgm1.mp3',
+    '../assets/bgm/nightbgm2.mp3',
+    '../assets/bgm/nightbgm3.mp3',
+    '../assets/bgm/nightbgm4.mp3',
+    '../assets/bgm/nightbgm5.mp3'
 ];
 
 const bgmAudio = new Audio();

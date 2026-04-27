@@ -289,6 +289,20 @@ std::vector<TilePos> PlayerController::attackAreaTiles() const {
         return smallSkillAttackTiles();
     }
 
+    if (role_.kind() == RoleKind::LegendaryLineArcher) {
+        const TilePos dir = forwardVector(facing_);
+        const std::int32_t range = std::max(1, role_.normalAttack().rangeTiles);
+        std::vector<TilePos> tiles;
+        tiles.reserve(static_cast<std::size_t>(range));
+        for (std::int32_t distance = 1; distance <= range; ++distance) {
+            tiles.push_back(TilePos{
+                tilePos_.x + dir.x * distance,
+                tilePos_.y + dir.y * distance
+            });
+        }
+        return tiles;
+    }
+
     const TilePos front = addTile(tilePos_, forwardVector(facing_));
     return {front};
 }
@@ -434,6 +448,7 @@ bool PlayerController::bigSkillReady() const {
 void PlayerController::requestSkill(SkillSlot slot, float nowMs) {
     (void)nowMs;
     if (dead_) return;
+    if (!role_.skillEnabled(slot)) return;
 
     if (slot == SkillSlot::Small) {
         pendingSmallSkill_ = true;
@@ -587,6 +602,10 @@ void PlayerController::startAttackAction(float nowMs,
         attackVariant_ = 1;
         attackDamageScalePercent_ = 150;
         attackUsesAutoLock_ = false;
+    } else if (role_.kind() == RoleKind::LegendaryLineArcher) {
+        attackVariant_ = 3;
+        attackDamageScalePercent_ = 100;
+        attackUsesAutoLock_ = false;
     } else {
         attackVariant_ = (attackChainStep_ == 2) ? 2 : 1;
         attackChainStep_ = (attackChainStep_ + 1) % 3;
@@ -643,6 +662,9 @@ void PlayerController::finishAttack(float nowMs,
 
     if (isSmallSkillActive()) {
         attackDamageScalePercent_ = 150;
+        attackUsesAutoLock_ = false;
+    } else if (role_.kind() == RoleKind::LegendaryLineArcher) {
+        attackDamageScalePercent_ = 100;
         attackUsesAutoLock_ = false;
     } else {
         attackDamageScalePercent_ = 100;

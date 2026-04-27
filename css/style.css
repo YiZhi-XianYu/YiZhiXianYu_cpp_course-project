@@ -44,7 +44,7 @@ body.day-mode {
     aspect-ratio: 1 / 1;
     
     /* 注意：请确保你的项目根目录下有 assets/background.gif 文件 */
-    background-image: url('./assets/background.gif'); 
+    background-image: url('../assets/background.gif'); 
     background-size: contain; /* 保持完整正方形内容，不拉伸 */
     background-position: center;
     background-repeat: no-repeat;

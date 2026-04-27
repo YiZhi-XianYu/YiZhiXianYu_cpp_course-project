@@ -11,6 +11,11 @@ enum class SkillSlot {
     Big
 };
 
+enum class RoleKind {
+    PlainPhysicalMage,
+    LegendaryLineArcher
+};
+
 enum class RelativeDirection {
     Front,
     Left,
@@ -44,8 +49,10 @@ public:
     };
 
     static CharacterRole plainPhysicalMage();
+    static CharacterRole legendaryLineArcher();
 
     [[nodiscard]] const std::string& displayName() const;
+    [[nodiscard]] RoleKind kind() const;
     [[nodiscard]] const Stats& stats() const;
     [[nodiscard]] const AttackProfile& normalAttack() const;
     [[nodiscard]] const SkillProfile& smallSkill() const;
@@ -53,6 +60,7 @@ public:
     [[nodiscard]] bool skillEnabled(SkillSlot slot) const;
 
 private:
+    RoleKind kind_ = RoleKind::PlainPhysicalMage;
     std::string displayName_;
     Stats stats_;
     AttackProfile normalAttack_;

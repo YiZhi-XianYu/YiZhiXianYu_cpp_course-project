@@ -27,6 +27,7 @@ using core::MonsterConfig;
 using core::MonsterController;
 using core::PlayerConfig;
 using core::PlayerController;
+using core::RoleKind;
 using core::TilePos;
 
 std::unique_ptr<PlayerController> g_player;
@@ -93,7 +94,7 @@ void ensureEnemiesSize(std::size_t count) {
 
 void ensureControllersInitialized() {
     if (!g_player) {
-        g_player = std::make_unique<PlayerController>(g_playerConfig, CharacterRole::plainPhysicalMage());
+        g_player = std::make_unique<PlayerController>(g_playerConfig, CharacterRole::legendaryLineArcher());
         resetCombatRuntimeState();
     }
     if (g_enemies.empty()) {
@@ -280,6 +281,31 @@ void resolvePlayerAttack(float nowMs) {
 
     const auto attackTiles = g_player->attackAreaTiles();
     if (attackTiles.empty()) return;
+
+    if (g_player->role().kind() == RoleKind::LegendaryLineArcher) {
+        // 沿直线逐格扫描：先判墙，遇墙或首个敌人即终止。
+        for (const TilePos& tile : attackTiles) {
+            if (isBlocked(tile.x, tile.y)) {
+                break;
+            }
+
+            bool hitEnemy = false;
+            for (const auto& enemy : g_enemies) {
+                if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
+                const TilePos enemyTile = enemy->tilePos();
+                if (enemyTile.x == tile.x && enemyTile.y == tile.y) {
+                    enemy->applyDamage(g_player->currentAttackPower(), nowMs, g_player->tilePos());
+                    hitEnemy = true;
+                    break;
+                }
+            }
+
+            if (hitEnemy) {
+                break;
+            }
+        }
+        return;
+    }
 
     for (const auto& enemy : g_enemies) {
         if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
