@@ -195,3 +195,158 @@ body.day-mode .footer-text {
 @keyframes blinker {
     50% { opacity: 0.3; }
 }
+
+.role-overlay {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(6, 10, 24, 0.78);
+    backdrop-filter: blur(4px);
+    z-index: 30;
+}
+
+.role-overlay[hidden] {
+    display: none !important;
+}
+
+.role-panel {
+    width: min(92vw, 760px);
+    padding: 26px;
+    background: rgba(19, 24, 44, 0.95);
+    border: 4px solid #f7f9ff;
+    box-shadow: 0 0 0 4px #2a3b70, 0 20px 42px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+.role-title {
+    margin: 0;
+    font-size: 20px;
+    color: #ffe66d;
+    text-shadow: 2px 2px 0 #ff3a70;
+}
+
+.role-subtitle {
+    margin: 14px 0 20px;
+    font-size: 11px;
+    color: #d7e7ff;
+}
+
+.role-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.role-card {
+    position: relative;
+    padding: 16px 14px;
+    border: 4px solid #c8dbff;
+    background: linear-gradient(180deg, #24325b 0%, #131b35 100%);
+    color: #f6f9ff;
+    font-family: 'Press Start 2P', monospace;
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
+}
+
+.role-card:hover {
+    transform: translateY(-2px) scale(1.01);
+    border-color: #ffe66d;
+    box-shadow: 0 0 0 3px #38539a;
+    animation: role-card-border-pixel-jump 280ms steps(2) infinite;
+}
+
+.role-card.is-last-choice {
+    border-color: #ffe66d;
+    box-shadow: 0 0 0 3px #38539a;
+}
+
+.role-card:active {
+    transform: translateY(0) scale(0.99);
+}
+
+.role-name {
+    display: block;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.role-art {
+    display: block;
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 12px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.35));
+}
+
+.role-art-mage {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Idle.png');
+    background-size: 600px 100px;
+    background-position: left center;
+}
+
+.role-art-archer {
+    background-image: url('../assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier with shadows/Soldier-Attack03.png');
+    background-size: 900px 100px;
+    background-position: left center;
+}
+
+.role-desc {
+    display: block;
+    margin-top: 10px;
+    font-size: 9px;
+    line-height: 1.6;
+    opacity: 0.9;
+    color: #b9cdf6;
+}
+
+.role-cancel {
+    margin-top: 16px;
+    border: 4px solid #ff8ea6;
+    background: #411a2a;
+    color: #ffd7e2;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+.role-cancel:hover {
+    background: #5a2238;
+}
+
+@keyframes role-card-border-pixel-jump {
+    0% {
+        box-shadow: 0 0 0 3px #38539a;
+    }
+    50% {
+        box-shadow: 2px -2px 0 3px #5a7bda;
+    }
+    100% {
+        box-shadow: -2px 2px 0 3px #2f4b90;
+    }
+}
+
+@media (max-width: 768px) {
+    .role-panel {
+        padding: 20px;
+    }
+
+    .role-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .role-name {
+        font-size: 11px;
+    }
+
+    .role-art {
+        width: 108px;
+        height: 108px;
+    }
+}

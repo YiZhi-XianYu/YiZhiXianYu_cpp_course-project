@@ -62,6 +62,8 @@ public:
     [[nodiscard]] std::int32_t currentAttackPower() const;
     [[nodiscard]] std::int32_t currentHp() const;
     [[nodiscard]] bool isBigWaveActive() const;
+    [[nodiscard]] bool isArcherBlessingActive() const;
+    [[nodiscard]] bool consumeArcherVolleyReady();
     [[nodiscard]] TilePos bigWaveOriginTile() const;
     [[nodiscard]] std::int32_t bigWaveFrontDistance() const;
     [[nodiscard]] Facing bigWaveFacing() const;
@@ -99,7 +101,9 @@ private:
         const std::function<bool(std::int32_t, std::int32_t)>& isBlocked);
     void startAttackAction(float nowMs,
         const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy);
-    void startSmallSkillAction(float nowMs);
+    void startSmallSkillAction(float nowMs,
+        const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
+        const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy);
     void startBigSkillAction(float nowMs);
     void finishAttack(float nowMs,
         const std::function<bool(std::int32_t, std::int32_t)>& isBlocked);
@@ -160,7 +164,15 @@ private:
     std::int32_t smallSkillCooldownUntilTurn_ = 0;
     std::int32_t bigSkillCooldownUntilTurn_ = 0;
 
+    bool archerSmallSkillAttack_ = false;
+    bool archerBlessingActive_ = false;
+    bool archerBlessingActivateOnNextTurn_ = false;
+    bool archerVolleyPending_ = false;
+    std::int32_t archerBlessingTurnsLeft_ = 0;
+
     BigWaveState bigWave_{};
+
+    std::vector<TilePos> cachedSmallSkillTiles_;
 };
 
 } // namespace core

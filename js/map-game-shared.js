@@ -438,6 +438,7 @@
         function beginArrowShot(nowMs) {
             if (!cppRuntime) return;
 
+            const isSmallSkill = cppRuntime.playerSmallSkillActive();
             const attackTiles = collectTileArea(
                 () => cppRuntime.playerAttackAreaCount(),
                 (index) => cppRuntime.playerAttackAreaX(index),
@@ -445,30 +446,141 @@
             );
             if (!attackTiles.length) return;
 
-            const targetTile = findArrowTargetTile(attackTiles);
-            if (!targetTile) return;
-
+            // 保持你精心微调过的 1.6 倍高度偏移
             const gridOffset = 1.6 * config.worldScale * state.tileHeight;
             const startX = cppRuntime.playerWorldX();
             const startY = cppRuntime.playerWorldY() - config.soldierFrame * 0.44 - gridOffset;
+            const facingX = cppRuntime.playerFacingX() < 0 ? -1 : 1;
+
+            // ==== 小技能：反弹与散弹逻辑 ====
+            if (isSmallSkill) {
+                let pathTiles = [];
+                let current = { x: cppRuntime.playerTileX(), y: cppRuntime.playerTileY() };
+                
+                let fx = Math.sign(attackTiles[0].x - current.x);
+                let fy = Math.sign(attackTiles[0].y - current.y);
+                if (fx === 0 && fy === 0) fx = facingX;
+
+                let bounces = 0;
+                let hitEnemyPos = null;
+
+                for (let step = 1; step <= 15; ++step) {
+                    let next = { x: current.x + fx, y: current.y + fy };
+
+                    if (isSolidTileAt(next.x, next.y + config.collisionTileOffsetY)) {
+                        if (bounces >= 2) break;
+                        bounces++;
+
+                        let lx = fy, ly = -fx, rx = -fy, ry = fx; 
+                        let leftBlocked = isSolidTileAt(current.x + lx, current.y + ly + config.collisionTileOffsetY);
+                        let rightBlocked = isSolidTileAt(current.x + rx, current.y + ry + config.collisionTileOffsetY);
+
+                        if (leftBlocked && !rightBlocked) { fx = rx; fy = ry; } 
+                        else if (rightBlocked && !leftBlocked) { fx = lx; fy = ly; } 
+                        else { fx = -fx; fy = -fy; }
+                        
+                        next = { x: current.x + fx, y: current.y + fy };
+                        if (isSolidTileAt(next.x, next.y + config.collisionTileOffsetY)) break;
+                    }
+
+                    current = next;
+                    pathTiles.push(current);
+
+                    let hit = false;
+                    for (let i = 0; i < cppRuntime.enemyCount(); i++) {
+                        if (!cppRuntime.enemyIsRemovedAt(i) && !cppRuntime.enemyIsDeadAt(i)) {
+                            if (cppRuntime.enemyTileXAt(i) === current.x && cppRuntime.enemyTileYAt(i) === current.y) {
+                                hit = true; break;
+                            }
+                        }
+                    }
+                    if (hit) { hitEnemyPos = current; break; }
+                }
+
+                let segments = [{x: startX, y: startY}];
+                for(const t of pathTiles) {
+                    const tw = tileToWorldPoint(t.x, t.y);
+                    segments.push({x: tw.x, y: tw.y - config.soldierFrame * 0.44 - gridOffset});
+                }
+
+                setTimeout(() => {
+                    state.arrowShots.list.push({
+                        startMs: performance.now(),
+                        durationMs: Math.max(80, config.attackDurationMs * 0.5),
+                        segments: segments,
+                        isSmallSkill: true
+                    });
+                }, config.attackDurationMs * 0.8);
+
+                if (hitEnemyPos) {
+                    setTimeout(() => {
+                        const dx = [-1, 1, 0, 0, -1, 1, -1, 1];
+                        const dy = [0, 0, -1, 1, -1, -1, 1, 1];
+                        const spreadRange = 10;
+                        for(let d=0; d<8; d++) {
+                            const twStart = tileToWorldPoint(hitEnemyPos.x, hitEnemyPos.y);
+
+                            let endTile = null;
+                            for (let dist = 1; dist <= spreadRange; dist++) {
+                                const tx = hitEnemyPos.x + dx[d] * dist;
+                                const ty = hitEnemyPos.y + dy[d] * dist;
+
+                                if (isSolidTileAt(tx, ty + config.collisionTileOffsetY)) {
+                                    break;
+                                }
+
+                                endTile = { x: tx, y: ty };
+
+                                let hit = false;
+                                for (let i = 0; i < cppRuntime.enemyCount(); i++) {
+                                    if (!cppRuntime.enemyIsRemovedAt(i) && !cppRuntime.enemyIsDeadAt(i)) {
+                                        if (cppRuntime.enemyTileXAt(i) === tx && cppRuntime.enemyTileYAt(i) === ty) {
+                                            hit = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (hit) {
+                                    break;
+                                }
+                            }
+
+                            if (!endTile) {
+                                continue;
+                            }
+
+                            const twEnd = tileToWorldPoint(endTile.x, endTile.y);
+                            state.arrowShots.list.push({
+                                startMs: performance.now(),
+                                durationMs: 150, 
+                                startX: twStart.x,
+                                startY: twStart.y - config.soldierFrame * 0.44 - gridOffset,
+                                targetX: twEnd.x,
+                                targetY: twEnd.y - config.soldierFrame * 0.44 - gridOffset,
+                                isSmallSkill: false 
+                            });
+                        }
+                    }, config.attackDurationMs * 1.3);
+                }
+                return;
+            }
+
+            // ==== 原版普通攻击逻辑 ====
+            const targetTile = findArrowTargetTile(attackTiles);
+            if (!targetTile) return;
+
             const targetWorld = tileToWorldPoint(targetTile.x, targetTile.y);
             const targetX = targetWorld.x;
             const targetY = targetWorld.y - config.soldierFrame * 0.44 - gridOffset;
-            const facingX = cppRuntime.playerFacingX() < 0 ? -1 : 1;
 
             setTimeout(() => {
                 state.arrowShots.list.push({
                     startMs: performance.now(),
                     durationMs: Math.max(80, config.attackDurationMs * 0.5),
-                    startX,
-                    startY,
-                    targetX,
-                    targetY,
-                    facingX
+                    startX, startY, targetX, targetY, facingX
                 });
             }, config.attackDurationMs * 0.8);
         }
-
         function ensureArrowElements(count) {
             while (arrowEls.length < count) {
                 const el = document.createElement('div');
@@ -495,16 +607,37 @@
                 const shot = state.arrowShots.list[i];
                 const el = arrowEls[i];
                 const progress = Math.max(0, Math.min(1, (nowMs - shot.startMs) / shot.durationMs));
-                const x = shot.startX + (shot.targetX - shot.startX) * progress;
-                const y = shot.startY + (shot.targetY - shot.startY) * progress;
-                const dx = shot.targetX - shot.startX;
-                const dy = shot.targetY - shot.startY;
-                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                
+                let x, y, angle;
+                
+                if (shot.segments && shot.segments.length > 1) {
+                    const totalSegments = shot.segments.length - 1;
+                    const scaledProgress = progress * totalSegments;
+                    const segmentIndex = Math.min(Math.floor(scaledProgress), totalSegments - 1);
+                    const segmentProgress = scaledProgress - segmentIndex;
+                    
+                    const p1 = shot.segments[segmentIndex];
+                    const p2 = shot.segments[segmentIndex + 1];
+                    
+                    x = p1.x + (p2.x - p1.x) * segmentProgress;
+                    y = p1.y + (p2.y - p1.y) * segmentProgress;
+                    angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
+                } else {
+                    x = shot.startX + (shot.targetX - shot.startX) * progress;
+                    y = shot.startY + (shot.targetY - shot.startY) * progress;
+                    angle = Math.atan2(shot.targetY - shot.startY, shot.targetX - shot.startX) * 180 / Math.PI;
+                }
 
                 el.style.left = `${x - cameraX - 50}px`;
                 el.style.top = `${y - cameraY - 50}px`;
                 el.style.opacity = `${1 - progress * 0.15}`;
                 el.style.transform = `rotate(${angle}deg) scale(2, 2)`;
+                
+                if (shot.isSmallSkill) {
+                    el.style.filter = 'drop-shadow(0 0 8px white) drop-shadow(0 0 16px white) brightness(2)';
+                } else {
+                    el.style.filter = 'none';
+                }
             }
         }
 
@@ -538,10 +671,11 @@
             const attackVariant = isAttacking ? cppRuntime.playerAttackVariant() : 0;
             const isWalking = !isDead && !isHurt && !isAttacking && cppRuntime.playerIsWalking();
             const smallSkillActive = cppRuntime.playerSmallSkillActive();
+            const archerBlessingActive = cppRuntime.playerArcherBlessingActive();
 
-            const showAttack01 = isAttacking && (smallSkillActive || attackVariant === 1);
-            const showAttack02 = isAttacking && !smallSkillActive && attackVariant === 2;
-            const showAttack03 = isAttacking && !smallSkillActive && attackVariant === 3;
+            const showAttack01 = isAttacking && attackVariant === 1;
+            const showAttack02 = isAttacking && attackVariant === 2;
+            const showAttack03 = isAttacking && attackVariant === 3;
 
             soldierEl.classList.toggle('is-hurt', isHurt);
             soldierEl.classList.toggle('is-dead', isDead);
@@ -551,6 +685,7 @@
             soldierEl.classList.toggle('is-walking', isWalking);
             soldierEl.classList.toggle('is-idle', !isAttacking && !isWalking);
             soldierEl.classList.toggle('is-small-skill-active', smallSkillActive);
+            soldierEl.classList.toggle('is-archer-blessing-active', archerBlessingActive);
             soldierEl.classList.toggle('sprite-hidden', isDead && deathFinished);
 
             if (isAttacking && !wasSoldierAttacking) {
@@ -861,10 +996,12 @@
             const query = new URLSearchParams(window.location.search);
             const runToken = query.get('run');
             const sessionToken = query.get('session');
+            const role = query.get('role');
             const params = [];
 
             if (runToken) params.push(`run=${encodeURIComponent(runToken)}`);
             if (sessionToken) params.push(`session=${encodeURIComponent(sessionToken)}`);
+            if (role) params.push(`role=${encodeURIComponent(role)}`);
             if (config.specialEventEntryTag) {
                 params.push(`entry=${encodeURIComponent(config.specialEventEntryTag)}`);
             }
@@ -964,8 +1101,7 @@
             );
             if (attackTiles.length > 0) {
                 if (cppRuntime.playerSmallSkillActive()) {
-                    const smallSkillTiles = attackTiles.map((tile) => ({ x: tile.x, y: tile.y - 2 }));
-                    drawTileHighlights(smallSkillTiles, 'rgba(255, 244, 214, 0.14)', 'rgba(255, 244, 214, 0.45)');
+                    // 小技能扩散箭不绘制地块高亮，避免误导范围显示。
                 } else {
                     const normalAttackTiles = attackTiles.map((tile) => ({ x: tile.x, y: tile.y - 2 }));
                     drawTileHighlights(normalAttackTiles, 'rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.68)');
@@ -1043,6 +1179,7 @@
             const smallCd = cppRuntime.playerSmallSkillCooldownLeft();
             const bigCd = cppRuntime.playerBigSkillCooldownLeft();
             const waveActive = cppRuntime.playerBigWaveActive();
+            const archerBlessingActive = cppRuntime.playerArcherBlessingActive();
             const playerState = playerDead ? '阵亡' : playerHurt ? '受击' : '行动中';
             const enemyCount = cppRuntime.enemyCount();
             const enemyName = cppRuntime.enemyRoleName();
@@ -1071,7 +1208,9 @@
             const activeEnemies = Math.max(0, enemyCount - removedEnemies);
             const enemyStateSummary = `存活${aliveEnemies}/${activeEnemies} 发现${discoveredEnemies}/${activeEnemies}`;
 
-            const text = `${cppRuntime.playerRoleName()} | HP ${playerHp}/${playerMaxHp} | 状态:${playerState} | ATK ${currentAttack}(${attackPercent}%) | 锁敌:${autoLock ? '开' : '关'} | 小技能:${smallActive ? `持续${smallLeft}` : '未激活'}/CD${smallCd} | 大技能CD${bigCd}${waveActive ? ' | 剑气推进中' : ''} | ${enemyName}x${enemyCount}: HP总量 ${totalEnemyHp}/${enemyMaxHp * activeEnemies} ATK ${enemyAtk} ${enemyStateSummary} | 当前位置: (${currentX}, ${currentY})`;
+            const waveLabel = waveActive ? ' | 剑气推进中' : '';
+            const archerBuffLabel = archerBlessingActive ? ' | 白光祝福生效中' : '';
+            const text = `${cppRuntime.playerRoleName()} | HP ${playerHp}/${playerMaxHp} | 状态:${playerState} | ATK ${currentAttack}(${attackPercent}%) | 锁敌:${autoLock ? '开' : '关'} | 小技能:${smallActive ? `持续${smallLeft}` : '未激活'}/CD${smallCd} | 大技能CD${bigCd}${waveLabel}${archerBuffLabel} | ${enemyName}x${enemyCount}: HP总量 ${totalEnemyHp}/${enemyMaxHp * activeEnemies} ATK ${enemyAtk} ${enemyStateSummary} | 当前位置: (${currentX}, ${currentY})`;
 
             if (text === state.lastStatusText && currentX === state.lastTileX && currentY === state.lastTileY) return;
 
@@ -1185,6 +1324,14 @@
                     topDeadZoneRatioY: config.cameraTopDeadzoneRatioY,
                     bottomDeadZoneRatioY: config.cameraBottomDeadzoneRatioY
                 });
+
+                const roleParams = new URLSearchParams(window.location.search);
+                const roleValue = roleParams.get('role');
+                if (roleValue === 'plainPhysicalMage') {
+                    cppRuntime.setPlayerRole(0);
+                } else if (roleValue === 'legendaryLineArcher') {
+                    cppRuntime.setPlayerRole(1);
+                }
 
                 const tmxText = await fetch(config.tmxPath).then((r) => r.text());
                 const mapDoc = new DOMParser().parseFromString(tmxText, 'text/xml');

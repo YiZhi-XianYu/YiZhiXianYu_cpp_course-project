@@ -108,6 +108,10 @@ function playRandomMusic(isDay) {
 const btnStart = document.getElementById('btn-start');
 const btnLoad = document.getElementById('btn-load');
 const btnSwitch = document.getElementById('btn-switch');
+const roleOverlay = document.getElementById('role-overlay');
+const roleMage = document.getElementById('role-mage');
+const roleArcher = document.getElementById('role-archer');
+const roleCancel = document.getElementById('role-cancel');
 const runToken = new URLSearchParams(window.location.search).get('run');
 
 let isDayMode = false;
@@ -132,13 +136,69 @@ function updateSwitchButtonText() {
     btnSwitch.textContent = isDayMode ? '切换为夜间' : '切换为白天';
 }
 
+function askPlayerRole() {
+    return new Promise((resolve) => {
+        if (!roleOverlay || !roleMage || !roleArcher || !roleCancel) {
+            resolve('legendaryLineArcher');
+            return;
+        }
+
+        roleOverlay.hidden = false;
+
+        const lastChoice = localStorage.getItem('selectedRole') || 'legendaryLineArcher';
+        roleMage.classList.toggle('is-last-choice', lastChoice === 'plainPhysicalMage');
+        roleArcher.classList.toggle('is-last-choice', lastChoice === 'legendaryLineArcher');
+
+        const cleanup = () => {
+            roleOverlay.hidden = true;
+            roleMage.classList.remove('is-last-choice');
+            roleArcher.classList.remove('is-last-choice');
+            roleMage.removeEventListener('click', onMage);
+            roleArcher.removeEventListener('click', onArcher);
+            roleCancel.removeEventListener('click', onCancel);
+            document.removeEventListener('keydown', onKeydown);
+        };
+
+        const onMage = () => {
+            cleanup();
+            resolve('plainPhysicalMage');
+        };
+        const onArcher = () => {
+            cleanup();
+            resolve('legendaryLineArcher');
+        };
+        const onCancel = () => {
+            cleanup();
+            resolve(null);
+        };
+        const onKeydown = (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onCancel();
+            }
+        };
+
+        roleMage.addEventListener('click', onMage);
+        roleArcher.addEventListener('click', onArcher);
+        roleCancel.addEventListener('click', onCancel);
+        document.addEventListener('keydown', onKeydown);
+    });
+}
+
 // 开始游戏
-btnStart.addEventListener('click', () => {
+btnStart.addEventListener('click', async () => {
     unlockAudio(); // 确保点击按钮时也能解锁
+    const selectedRole = await askPlayerRole();
+    if (!selectedRole) {
+        return;
+    }
+    localStorage.setItem('selectedRole', selectedRole);
+
     let gameUrl = 'map01.html?v=20260425-6';
     if (runToken) gameUrl += `&run=${encodeURIComponent(runToken)}`;
     const sessionToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     gameUrl += `&session=${encodeURIComponent(sessionToken)}`;
+    gameUrl += `&role=${encodeURIComponent(selectedRole)}`;
     window.location.href = gameUrl;
 });
 

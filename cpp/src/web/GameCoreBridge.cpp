@@ -71,6 +71,13 @@ float g_worldHeight = 0.0f;
 float g_viewportWidth = 0.0f;
 float g_viewportHeight = 0.0f;
 
+CharacterRole roleFromKindInt(std::int32_t roleKind) {
+    if (roleKind == 0) {
+        return CharacterRole::plainPhysicalMage();
+    }
+    return CharacterRole::legendaryLineArcher();
+}
+
 void resetCombatRuntimeState() {
     g_lastProcessedTurn = -1;
     g_enemyTurnCursor = 0;
@@ -157,6 +164,96 @@ bool tileInArea(const std::vector<TilePos>& tiles, TilePos tile) {
     return std::any_of(tiles.begin(), tiles.end(), [tile](const TilePos& areaTile) {
         return areaTile.x == tile.x && areaTile.y == tile.y;
     });
+}
+
+MonsterController* findAliveEnemyAt(std::int32_t x, std::int32_t y) {
+    for (auto& enemy : g_enemies) {
+        if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
+        const TilePos pos = enemy->tilePos();
+        if (pos.x == x && pos.y == y) {
+            return enemy.get();
+        }
+    }
+    return nullptr;
+}
+
+void resolveArcherArrowTrace(
+    TilePos origin,
+    TilePos direction,
+    std::int32_t maxRange,
+    bool allowOneTurn,
+    float nowMs,
+    TilePos damageSource
+) {
+    if (!g_player) return;
+    if (maxRange <= 0) return;
+    if (direction.x == 0 && direction.y == 0) return;
+
+    TilePos current = origin;
+    TilePos dir = direction;
+    bool turned = false;
+
+    for (std::int32_t travelled = 0; travelled < maxRange; ++travelled) {
+        TilePos next{current.x + dir.x, current.y + dir.y};
+
+        if (isBlocked(next.x, next.y)) {
+            if (!allowOneTurn || turned) {
+                break;
+            }
+
+            if (dir.x != 0 && dir.y != 0) {
+                const bool blockX = isBlocked(current.x + dir.x, current.y);
+                const bool blockY = isBlocked(current.x, current.y + dir.y);
+                if (blockX && blockY) {
+                    dir.x = -dir.x;
+                    dir.y = -dir.y;
+                } else if (blockX && !blockY) {
+                    dir.x = -dir.x;
+                } else if (!blockX && blockY) {
+                    dir.y = -dir.y;
+                } else {
+                    dir.x = -dir.x;
+                    dir.y = -dir.y;
+                }
+            } else {
+                dir.x = -dir.x;
+                dir.y = -dir.y;
+            }
+
+            turned = true;
+            next = TilePos{current.x + dir.x, current.y + dir.y};
+            if (isBlocked(next.x, next.y)) {
+                break;
+            }
+        }
+
+        current = next;
+
+        MonsterController* enemy = findAliveEnemyAt(current.x, current.y);
+        if (enemy) {
+            enemy->applyDamage(g_player->currentAttackPower(), nowMs, damageSource);
+            break;
+        }
+    }
+}
+
+void resolveArcherBlessingVolley(float nowMs) {
+    if (!g_player) return;
+    if (!g_player->consumeArcherVolleyReady()) return;
+    if (g_player->isDead()) return;
+
+    const TilePos origin = g_player->tilePos();
+    const std::int32_t range = std::max(1, g_player->role().normalAttack().rangeTiles);
+    const bool allowTurn = g_player->isArcherBlessingActive();
+
+    const TilePos dirs[] = {
+        {-1, 0}, {1, 0}, {0, -1}, {0, 1},
+        {-1, -1}, {1, -1}, {-1, 1}, {1, 1}
+    };
+
+    for (const TilePos& dir : dirs) {
+        resolveArcherArrowTrace(origin, dir, range, allowTurn, nowMs, origin);
+    }
 }
 
 TilePos forwardVectorForFacing(Facing facing) {
@@ -283,27 +380,29 @@ void resolvePlayerAttack(float nowMs) {
     if (attackTiles.empty()) return;
 
     if (g_player->role().kind() == RoleKind::LegendaryLineArcher) {
-        // 沿直线逐格扫描：先判墙，遇墙或首个敌人即终止。
-        for (const TilePos& tile : attackTiles) {
-            if (isBlocked(tile.x, tile.y)) {
-                break;
-            }
-
-            bool hitEnemy = false;
+        // 小技能命中区域已在控制器中计算完成，按区域直接结算，不做“首目标中断”。
+        if (g_player->isSmallSkillActive()) {
             for (const auto& enemy : g_enemies) {
                 if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
-                const TilePos enemyTile = enemy->tilePos();
-                if (enemyTile.x == tile.x && enemyTile.y == tile.y) {
+                if (tileInArea(attackTiles, enemy->tilePos())) {
                     enemy->applyDamage(g_player->currentAttackPower(), nowMs, g_player->tilePos());
-                    hitEnemy = true;
-                    break;
                 }
             }
-
-            if (hitEnemy) {
-                break;
-            }
+            return;
         }
+
+        const TilePos origin = g_player->tilePos();
+        TilePos direction{0, 0};
+        if (!attackTiles.empty()) {
+            direction.x = attackTiles.front().x - origin.x;
+            direction.y = attackTiles.front().y - origin.y;
+            direction.x = (direction.x < 0) ? -1 : (direction.x > 0 ? 1 : 0);
+            direction.y = (direction.y < 0) ? -1 : (direction.y > 0 ? 1 : 0);
+        }
+
+        const std::int32_t range = std::max(1, g_player->role().normalAttack().rangeTiles);
+        const bool allowTurn = g_player->isArcherBlessingActive();
+        resolveArcherArrowTrace(origin, direction, range, allowTurn, nowMs, origin);
         return;
     }
 
@@ -533,6 +632,12 @@ GC_KEEPALIVE void gc_enemy_set_spawn_at(std::int32_t index, std::int32_t tileX, 
     enemy->setSpawn(TilePos{tileX, tileY});
 }
 
+GC_KEEPALIVE void gc_set_player_role(std::int32_t roleKind) {
+    const CharacterRole role = roleFromKindInt(roleKind);
+    g_player = std::make_unique<PlayerController>(g_playerConfig, role);
+    resetCombatRuntimeState();
+}
+
 GC_KEEPALIVE std::int32_t gc_enemy_count() {
     return static_cast<std::int32_t>(g_enemies.size());
 }
@@ -604,6 +709,7 @@ GC_KEEPALIVE void gc_update(float nowMs) {
     const std::int32_t currentTurn = g_player->currentTurn();
     if (currentTurn != g_lastProcessedTurn) {
         g_lastProcessedTurn = currentTurn;
+        resolveArcherBlessingVolley(nowMs);
         g_enemyTurnCursor = 0;
         processEnemyTurnLogic(currentTurn, playerTile, nowMs);
     }
@@ -739,6 +845,11 @@ GC_KEEPALIVE std::int32_t gc_player_big_skill_cooldown_left() {
 GC_KEEPALIVE std::int32_t gc_player_big_wave_active() {
     if (!g_player) return 0;
     return g_player->isBigWaveActive() ? 1 : 0;
+}
+
+GC_KEEPALIVE std::int32_t gc_player_archer_blessing_active() {
+    if (!g_player) return 0;
+    return g_player->isArcherBlessingActive() ? 1 : 0;
 }
 
 GC_KEEPALIVE std::int32_t gc_player_attack_area_count() {

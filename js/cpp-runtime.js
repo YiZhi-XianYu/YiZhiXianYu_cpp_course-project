@@ -448,6 +448,7 @@ async function createCppRuntime() {
         requestAttack: module.cwrap('gc_request_attack', null, ['number']),
         requestSmallSkill: module.cwrap('gc_request_small_skill', null, ['number']),
         requestBigSkill: module.cwrap('gc_request_big_skill', null, ['number']),
+        setPlayerRole: module.cwrap('gc_set_player_role', null, ['number']),
         playerRevive: module.cwrap('gc_player_revive', null, ['number']),
         update: module.cwrap('gc_update', null, ['number']),
         playerTileX: module.cwrap('gc_player_tile_x', 'number', []),
@@ -474,6 +475,7 @@ async function createCppRuntime() {
         playerSmallSkillCooldownLeft: module.cwrap('gc_player_small_skill_cooldown_left', 'number', []),
         playerBigSkillCooldownLeft: module.cwrap('gc_player_big_skill_cooldown_left', 'number', []),
         playerBigWaveActive: module.cwrap('gc_player_big_wave_active', 'number', []),
+        playerArcherBlessingActive: module.cwrap('gc_player_archer_blessing_active', 'number', []),
         playerAttackAreaCount: module.cwrap('gc_player_attack_area_count', 'number', []),
         playerAttackAreaX: module.cwrap('gc_player_attack_area_x', 'number', ['number']),
         playerAttackAreaY: module.cwrap('gc_player_attack_area_y', 'number', ['number']),
@@ -569,6 +571,9 @@ async function createCppRuntime() {
         requestBigSkill(nowMs) {
             api.requestBigSkill(nowMs);
         },
+        setPlayerRole(roleKind) {
+            api.setPlayerRole(roleKind);
+        },
         update(nowMs) {
             api.update(nowMs);
         },
@@ -643,6 +648,9 @@ async function createCppRuntime() {
         },
         playerBigWaveActive() {
             return api.playerBigWaveActive() === 1;
+        },
+        playerArcherBlessingActive() {
+            return api.playerArcherBlessingActive() === 1;
         },
         playerAttackAreaCount() {
             return api.playerAttackAreaCount();
