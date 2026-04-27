@@ -23,6 +23,7 @@
             '../assets/sound/07_human_atk_sword_2.wav',
             '../assets/sound/07_human_atk_sword_3.wav'
         ],
+        bowAttackSfxPaths: '../assets/sound/arrow_shot_voice.wav',
         hurtSfxPaths: [
             '../assets/sound/11_human_damage_1.wav',
             '../assets/sound/11_human_damage_2.wav'
@@ -50,6 +51,7 @@
             '../assets/sound/25_orc_walk_stone_3.wav'
         ],
         attackSfxVolume: 0.45,
+        bowAttackSfxVolume: 0.45,
         hurtSfxVolume: 0.42,
         deathSfxVolume: 0.5,
         walkSfxVolume: 0.3,
@@ -435,6 +437,7 @@
 
         function beginArrowShot(nowMs) {
             if (!cppRuntime) return;
+
             const attackTiles = collectTileArea(
                 () => cppRuntime.playerAttackAreaCount(),
                 (index) => cppRuntime.playerAttackAreaX(index),
@@ -445,22 +448,25 @@
             const targetTile = findArrowTargetTile(attackTiles);
             if (!targetTile) return;
 
+            const gridOffset = 1.6 * config.worldScale * state.tileHeight;
             const startX = cppRuntime.playerWorldX();
-            const startY = cppRuntime.playerWorldY() - config.soldierFrame * 0.4;
+            const startY = cppRuntime.playerWorldY() - config.soldierFrame * 0.44 - gridOffset;
             const targetWorld = tileToWorldPoint(targetTile.x, targetTile.y);
             const targetX = targetWorld.x;
-            const targetY = targetWorld.y - config.soldierFrame * 0.48;
+            const targetY = targetWorld.y - config.soldierFrame * 0.44 - gridOffset;
             const facingX = cppRuntime.playerFacingX() < 0 ? -1 : 1;
 
-            state.arrowShots.list.push({
-                startMs: nowMs,
-                durationMs: Math.max(80, config.attackDurationMs * 0.5),
-                startX,
-                startY,
-                targetX,
-                targetY,
-                facingX
-            });
+            setTimeout(() => {
+                state.arrowShots.list.push({
+                    startMs: performance.now(),
+                    durationMs: Math.max(80, config.attackDurationMs * 0.5),
+                    startX,
+                    startY,
+                    targetX,
+                    targetY,
+                    facingX
+                });
+            }, config.attackDurationMs * 0.8);
         }
 
         function ensureArrowElements(count) {
@@ -498,7 +504,7 @@
                 el.style.left = `${x - cameraX - 50}px`;
                 el.style.top = `${y - cameraY - 50}px`;
                 el.style.opacity = `${1 - progress * 0.15}`;
-                el.style.transform = `rotate(${angle}deg) scale(${2 * shot.facingX}, 2)`;
+                el.style.transform = `rotate(${angle}deg) scale(2, 2)`;
             }
         }
 
@@ -550,6 +556,7 @@
             if (isAttacking && !wasSoldierAttacking) {
                 if (attackVariant === 3) {
                     beginArrowShot(performance.now());
+                    playOneShotSfx(config.bowAttackSfxPaths, config.bowAttackSfxVolume);
                 } else {
                     playRandomAttackSfx();
                 }
