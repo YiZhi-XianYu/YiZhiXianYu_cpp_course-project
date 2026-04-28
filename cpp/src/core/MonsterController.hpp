@@ -27,6 +27,7 @@ public:
     explicit MonsterController(MonsterConfig config, MonsterRole role = MonsterRole::goblin());
 
     void setSpawn(TilePos spawn);
+    void setHp(std::int32_t hp);
     void onMapSwitched();
     void applyDamage(std::int32_t damage, float nowMs, std::optional<TilePos> attackerTile = std::nullopt);
     void update(float nowMs,
@@ -51,6 +52,8 @@ public:
     [[nodiscard]] bool consumeAttackImpactReady();
     [[nodiscard]] std::int32_t currentHp() const;
     [[nodiscard]] std::vector<TilePos> attackAreaTiles() const;
+    [[nodiscard]] std::int32_t castingSkillId() const;
+    [[nodiscard]] bool consumeSkillImpactReady();
 
 private:
     struct MoveState {
@@ -65,6 +68,10 @@ private:
     [[nodiscard]] static TilePos directionToTileOffset(Facing facing);
     [[nodiscard]] bool inDiscoverRange(TilePos playerTile) const;
     [[nodiscard]] bool inAttackRange(TilePos playerTile) const;
+    std::int32_t castingSkillId_ = 0;
+    bool skillImpactConsumed_ = false;
+    std::array<std::int32_t, 3> skillCooldowns_{0, 0, 0};
+    std::int32_t globalSkillCooldown_ = 0;
     void faceTo(TilePos target);
     void startAttack(float nowMs);
     void startMove(TilePos nextTile, float nowMs);

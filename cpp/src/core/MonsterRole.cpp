@@ -15,6 +15,21 @@ MonsterRole MonsterRole::goblin() {
     return role;
 }
 
+MonsterRole MonsterRole::goblinKing() {
+    MonsterRole role{};
+    role.displayName_ = "哥布林大王";
+    role.stats_.maxHp = 1500;
+    role.stats_.attackPower = 30;
+    role.normalAttack_.name = "大王重击";
+    role.normalAttack_.rangeRadius = 1;
+    role.normalAttack_.cooldownMs = 1200;
+    role.normalAttack_.variants = 2;
+    role.vision_.discoverRadius = 3;
+    role.skill_.name = "技能";
+    role.skill_.enabled = true;
+    return role;
+}
+
 const std::string& MonsterRole::displayName() const {
     return displayName_;
 }
@@ -29,6 +44,10 @@ const MonsterRole::AttackProfile& MonsterRole::normalAttack() const {
 
 const MonsterRole::VisionProfile& MonsterRole::vision() const {
     return vision_;
+}
+
+const MonsterRole::SkillProfile& MonsterRole::skill() const {
+    return skill_;
 }
 
 } // namespace core

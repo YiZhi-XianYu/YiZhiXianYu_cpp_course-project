@@ -37,8 +37,7 @@
         tmxPath: '../assets/map/地牢2.tmx',
         mapBgmSrc: '../assets/bgm/地牢脱战bgm2.mp3',
         spawnTile: { x: 5, y: 5 },
-        
-        // 处理返回位置
+
         returnEntryFrom: 'map03', 
         returnSpawnTile: { x: 5, y: 12 }, 
 
@@ -52,28 +51,24 @@
             { x: 42, y: 7 },
             { x: 42, y: 10 },
             { x: 36, y: 12 },
-            { x: 34, y: 13 },
             { x: 31, y: 13 },
             { x: 27, y: 11 },
             { x: 14, y: 12 },
             { x: 13, y: 13 },
             { x: 8, y: 12 },
             { x: 43, y: 16 },
-            { x: 45, y: 19 },
             { x: 40, y: 18 },
             { x: 34, y: 19 },
             { x: 9, y: 18 },
             { x: 9, y: 19 },
             { x: 9, y: 20 },
             { x: 10, y: 18 },
-            { x: 10, y: 19 },
             { x: 10, y: 20 },
             { x: 11, y: 18 },
             { x: 11, y: 19 },
             { x: 11, y: 20 }
         ],
 
-        // --- 核心修改：定义多个传送门 ---
         portals: [
             {
                 // 去地图一的点位
@@ -90,7 +85,6 @@
             }
         ],
 
-        // 为了兼容性，保留以下必填项（可指向其中一个）
         eventTile: { x: -1, y: -1 }, 
         specialEventTarget: './map01.html',
         specialEventMode: 'armed',

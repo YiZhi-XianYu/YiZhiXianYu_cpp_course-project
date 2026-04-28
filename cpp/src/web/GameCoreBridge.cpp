@@ -44,6 +44,7 @@ bool g_prevBigWaveActive = false;
 std::int32_t g_prevBigWaveFrontDistance = -999;
 std::vector<std::uint8_t> g_bigWaveHitEnemyFlags;
 std::int32_t g_bigWaveDamageSnapshot = 0;
+std::vector<int> g_enemyRoleKinds;
 
 enum class PlayerCommandType {
     Move,
@@ -96,6 +97,9 @@ void ensureEnemiesSize(std::size_t count) {
     }
     if (g_bigWaveHitEnemyFlags.size() < g_enemies.size()) {
         g_bigWaveHitEnemyFlags.resize(g_enemies.size(), 0);
+    }
+    if (g_enemyRoleKinds.size() < g_enemies.size()) {
+        g_enemyRoleKinds.resize(g_enemies.size(), 0);
     }
 }
 
@@ -379,7 +383,6 @@ void resolvePlayerAttack(float nowMs) {
     if (attackTiles.empty()) return;
 
     if (g_player->role().kind() == RoleKind::LegendaryLineArcher) {
-        // 小技能命中区域已在控制器中计算完成，按区域直接结算，不做“首目标中断”。
         if (g_player->attackDamageScalePercent() == 150) {
             for (const auto& enemy : g_enemies) {
                 if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
@@ -625,6 +628,25 @@ GC_KEEPALIVE void gc_enemy_set_spawn_at(std::int32_t index, std::int32_t tileX, 
     auto* enemy = enemyAtIndex(index);
     if (!enemy) return;
     enemy->setSpawn(TilePos{tileX, tileY});
+}
+
+GC_KEEPALIVE void gc_enemy_set_role_at(std::int32_t index, std::int32_t roleKind) {
+    if (index < 0) return;
+    ensureControllersInitialized();
+    ensureEnemiesSize(static_cast<std::size_t>(index + 1));
+    if (roleKind == 1) {
+        g_enemies[static_cast<std::size_t>(index)] = std::make_unique<MonsterController>(g_monsterConfig, core::MonsterRole::goblinKing());
+        g_enemyRoleKinds[static_cast<std::size_t>(index)] = 1;
+    } else {
+        g_enemies[static_cast<std::size_t>(index)] = std::make_unique<MonsterController>(g_monsterConfig, core::MonsterRole::goblin());
+        g_enemyRoleKinds[static_cast<std::size_t>(index)] = 0;
+    }
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_role_kind_at(std::int32_t index) {
+    if (index < 0) return 0;
+    if (static_cast<std::size_t>(index) >= g_enemyRoleKinds.size()) return 0;
+    return g_enemyRoleKinds[static_cast<std::size_t>(index)];
 }
 
 GC_KEEPALIVE void gc_set_player_role(std::int32_t roleKind) {
@@ -887,7 +909,6 @@ GC_KEEPALIVE float gc_camera_y() {
     return g_camera->position().y;
 }
 
-// ---- Legacy single-enemy APIs (compatible wrappers) ----
 GC_KEEPALIVE std::int32_t gc_enemy_tile_x() {
     const auto* enemy = legacyEnemy();
     if (!enemy) return 0;
@@ -1016,7 +1037,6 @@ GC_KEEPALIVE std::int32_t gc_enemy_attack_area_y(std::int32_t index) {
     return tiles[static_cast<std::size_t>(index)].y;
 }
 
-// ---- Multi-enemy indexed APIs ----
 GC_KEEPALIVE std::int32_t gc_enemy_tile_x_at(std::int32_t enemyIndex) {
     const auto* enemy = enemyAtIndex(enemyIndex);
     if (!enemy) return 0;
@@ -1131,6 +1151,40 @@ GC_KEEPALIVE void gc_player_set_hp(std::int32_t hp) {
     if (g_player) {
         g_player->setPlayerHp(hp);
     }
+}
+
+GC_KEEPALIVE std::int32_t gc_player_current_turn() {
+    if (!g_player) return 0;
+    return g_player->currentTurn();
+}
+
+GC_KEEPALIVE void gc_enemy_set_hp_at(std::int32_t enemyIndex, std::int32_t hp) {
+    auto* enemy = enemyAtIndex(enemyIndex);
+    if (enemy) enemy->setHp(hp);
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_max_hp_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->role().stats().maxHp;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_casting_skill_id_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->castingSkillId();
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_consume_skill_impact_at(std::int32_t enemyIndex) {
+    auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->consumeSkillImpactReady() ? 1 : 0;
+}
+
+GC_KEEPALIVE std::int32_t gc_enemy_attack_power_at(std::int32_t enemyIndex) {
+    const auto* enemy = enemyAtIndex(enemyIndex);
+    if (!enemy) return 0;
+    return enemy->role().stats().attackPower;
 }
 
 } // extern "C"

@@ -63,8 +63,20 @@
         orcWalkSfxStepIntervalMs: 280,
         startupSafetyDurationMs: 2000,
         specialEventMode: 'cooldown',
-        darknessRadius: 0
+        darknessRadius: 0,
+        victoryOnBossDeath: false
     };
+
+    const CANDLE_POSITIONS = [
+        { x: 17, y: 9 },   // 北
+        { x: 22, y: 14 },  // 东北
+        { x: 27, y: 19 },  // 东
+        { x: 22, y: 23 },  // 东南
+        { x: 17, y: 28 },  // 南
+        { x: 12, y: 23 },  // 西南
+        { x: 7,  y: 19 },  // 西
+        { x: 12, y: 14 }   // 西北
+    ];
 
     const FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
     const FLIPPED_VERTICALLY_FLAG = 0x40000000;
@@ -101,6 +113,8 @@
         const deathOverlayEl = document.getElementById('death-overlay');
         const reviveButtonEl = document.getElementById('revive-button');
         const exitButtonEl = document.getElementById('exit-button');
+        const victoryOverlayEl = document.getElementById('victory-overlay');
+        const victoryExitButtonEl = document.getElementById('victory-exit-button');
         const darknessOverlayEl = document.getElementById('darkness-overlay');
         const bgmList = Array.isArray(config.mapBgmSrc) ? config.mapBgmSrc : [config.mapBgmSrc];
         let currentBgmIndex = 0;
@@ -140,6 +154,9 @@
         const enemyAudioStates = [];
 
         let deathOverlayVisible = false;
+        let victoryOverlayVisible = false;
+        let prevArcherBlessingActive = false;
+        let extraArcherBlessingUntilMs = 0;
         let gameplayReady = false;
         let startupSafetyUntilMs = 0;
         let hasSeenPlayerAlive = false;
@@ -184,8 +201,25 @@
             },
             arrowShots: {
                 list: []
-            }
+            },
+            candleMechanic: {
+            active: false,
+            currentIndex: 0,
+            turnsLeft: 5,
+            lastTurnProcessed: -1
+            },
+            bossIgniteMechanic: {
+            active: false,
+            turnsLeft: 0,
+            lastTurnProcessed: -1
+            },
+            bossWaveFx: {
+            active: false, x: 0, y: 0, targetX: 0, targetY: 0, facingX: 1, facingY: 0, alpha: 0
+            },
         };
+        state.goblinKingSpawned = false;
+        state.portalClosed = false;
+        state.goblinKingDefeated = false;
 
         function showPlayerBubble(text, duration = 3600) {
 
@@ -291,6 +325,7 @@
             mapBgmLeaving = true;
             exitButtonEl.disabled = true;
             reviveButtonEl.disabled = true;
+            if (victoryExitButtonEl) victoryExitButtonEl.disabled = true;
 
             const leave = () => window.location.replace(targetUrl);
 
@@ -303,6 +338,18 @@
                 stopMapBgmImmediate();
                 leave();
             });
+        }
+
+        function setDeathOverlayVisible(visible) {
+            if (!deathOverlayEl) return;
+            deathOverlayEl.hidden = !visible;
+            deathOverlayVisible = visible;
+        }
+
+        function setVictoryOverlayVisible(visible) {
+            if (!victoryOverlayEl) return;
+            victoryOverlayEl.hidden = !visible;
+            victoryOverlayVisible = visible;
         }
 
         function playOneShotSfx(path, volume) {
@@ -505,9 +552,7 @@
             const startY = cppRuntime.playerWorldY() - config.soldierFrame * 0.44 - gridOffset;
             const facingX = cppRuntime.playerFacingX() < 0 ? -1 : 1;
 
-            // ==== 小技能：简化后的贯穿穿透逻辑 ====
             if (isSmallSkill) {
-                // 后端已经计算好了完美的穿透路径，我们直接把最后一个地块当作飞行终点
                 const targetTile = attackTiles[attackTiles.length - 1]; 
                 if (!targetTile) return;
 
@@ -526,7 +571,6 @@
                 return;
             }
 
-            // ==== 原版普通攻击逻辑 ====
             const targetTile = findArrowTargetTile(attackTiles);
             if (!targetTile) return;
 
@@ -705,24 +749,26 @@
                     el.style.filter = 'drop-shadow(0 0 6px #ffd659) drop-shadow(0 0 12px #ffaa00) brightness(1.5)';
                 } else if (shot.isSmallSkill) {
                     el.style.filter = 'drop-shadow(0 0 8px white) drop-shadow(0 0 16px white) brightness(2)';
-                } else {
+                } else if (shot.isBossSkill) {
+                    el.style.filter = 'drop-shadow(0 0 8px #ff0000) drop-shadow(0 0 16px #880000) brightness(1.5)';
+                }else {
                     el.style.filter = 'none';
                 }
             }
         }
 
         function requestAttack() {
-            if (!cppRuntime || !gameplayReady || deathOverlayVisible || isPlayerDeadState()) return;
+            if (!cppRuntime || !gameplayReady || deathOverlayVisible || victoryOverlayVisible || isPlayerDeadState()) return;
             cppRuntime.requestAttack(performance.now());
         }
 
         function requestSmallSkill() {
-            if (!cppRuntime || !gameplayReady || deathOverlayVisible || isPlayerDeadState()) return;
+            if (!cppRuntime || !gameplayReady || deathOverlayVisible || victoryOverlayVisible || isPlayerDeadState()) return;
             cppRuntime.requestSmallSkill(performance.now());
         }
 
         function requestBigSkill() {
-            if (!cppRuntime || !gameplayReady || deathOverlayVisible || isPlayerDeadState()) return;
+            if (!cppRuntime || !gameplayReady || deathOverlayVisible || victoryOverlayVisible || isPlayerDeadState()) return;
             cppRuntime.requestBigSkill(performance.now());
         }
 
@@ -749,6 +795,17 @@
             wasPlayerActing = isActing;
             const smallSkillActive = cppRuntime.playerSmallSkillActive();
             const archerBlessingActive = cppRuntime.playerArcherBlessingActive();
+            const nowMs = performance.now();
+            const extraBlessingMs = Math.max(200, config.attackDurationMs + config.moveDurationMs);
+            if (prevArcherBlessingActive && !archerBlessingActive) {
+                try {
+                    triggerEightWayArrows();
+                } catch (err) {
+                    console.warn('triggerEightWayArrows failed on end-transition:', err);
+                }
+                extraArcherBlessingUntilMs = nowMs + extraBlessingMs;
+            }
+            const showArcherBlessing = archerBlessingActive || nowMs < extraArcherBlessingUntilMs;
 
             const showAttack01 = isAttacking && attackVariant === 1;
             const showAttack02 = isAttacking && attackVariant === 2;
@@ -762,7 +819,7 @@
             soldierEl.classList.toggle('is-walking', isWalking);
             soldierEl.classList.toggle('is-idle', !isAttacking && !isWalking);
             soldierEl.classList.toggle('is-small-skill-active', smallSkillActive);
-            soldierEl.classList.toggle('is-archer-blessing-active', archerBlessingActive);
+            soldierEl.classList.toggle('is-archer-blessing-active', showArcherBlessing);
             soldierEl.classList.toggle('sprite-hidden', isDead && deathFinished);
 
             if (isAttacking && !wasSoldierAttacking) {
@@ -793,6 +850,7 @@
             }
 
             wasSoldierAttacking = isAttacking;
+            prevArcherBlessingActive = archerBlessingActive;
             wasSoldierHurt = isHurt;
             wasSoldierDead = isDead;
             wasSoldierWalking = isWalking;
@@ -1124,6 +1182,16 @@
                     return;
                 }
             }
+            if (config.mapFileName === 'map03.html' && state.portalClosed) {
+                if (playerTileX === config.eventTile.x && playerTileY === config.eventTile.y) {
+                    if (!state.lastKeyHintAt || now - state.lastKeyHintAt > 2800) {
+                        showPlayerBubble("好凶的哥布林！而且回去的路好像被堵上了……", 4200);
+                        state.lastKeyHintAt = now;
+                    }
+                    return;
+                }
+            }
+
             const reachedDefaultEvent = playerTileX === config.eventTile.x && playerTileY === config.eventTile.y;
             if (reachedDefaultEvent) {
                 if (config.specialEventMode === 'armed' && !specialEventArmed) return;
@@ -1219,6 +1287,71 @@
                 }
             }
             drawTileHighlights(enemyAttackTiles, 'rgba(255, 92, 92, 0.16)', 'rgba(255, 116, 116, 0.6)');
+
+            if (state.candleMechanic && state.candleMechanic.active) {
+                const candle = CANDLE_POSITIONS[state.candleMechanic.currentIndex];
+                const areaTiles = [];
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        areaTiles.push({ x: candle.x + dx, y: candle.y + dy - 2 }); 
+                    }
+                }
+                drawTileHighlights(areaTiles, 'rgba(50, 255, 50, 0.25)', 'rgba(50, 255, 50, 0.6)');
+
+                const tileRenderWidth = state.tileWidth * config.worldScale;
+                const tileRenderHeight = state.tileHeight * config.worldScale;
+                const cameraX = cppRuntime.cameraX();
+                const cameraY = cppRuntime.cameraY();
+                const cx = (candle.x + 0.5) * tileRenderWidth - cameraX;
+                const cy = (candle.y - 1.5) * tileRenderHeight - cameraY;
+
+                ctx.save();
+                ctx.fillStyle = '#64ff64';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = '#000';
+                ctx.shadowBlur = 4;
+                ctx.fillText(`${state.candleMechanic.turnsLeft} 回合`, cx, cy);
+                ctx.restore();
+            }
+
+            if (state.bossIgniteMechanic && state.bossIgniteMechanic.active) {
+                const igniteTiles = [];
+                for (const candle of CANDLE_POSITIONS) {
+                    for (let dy = -2; dy <= 2; dy++) {
+                        for (let dx = -2; dx <= 2; dx++) {
+                            igniteTiles.push({ x: candle.x + dx, y: candle.y + dy - 2 });
+                        }
+                    }
+                }
+                drawTileHighlights(igniteTiles, 'rgba(255, 30, 0, 0.2)', 'rgba(255, 30, 0, 0.4)');
+            }
+
+            if (state.bossWaveFx && state.bossWaveFx.active) {
+                state.bossWaveFx.x += (state.bossWaveFx.targetX - state.bossWaveFx.x) * 0.15;
+                state.bossWaveFx.y += (state.bossWaveFx.targetY - state.bossWaveFx.y) * 0.15;
+                state.bossWaveFx.alpha -= 0.04;
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.strokeStyle = `rgba(255, 40, 40, ${Math.max(0, state.bossWaveFx.alpha)})`;
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                const major = 64, minor = 42;
+                const bx = state.bossWaveFx.x - cppRuntime.cameraX();
+                const by = state.bossWaveFx.y - cppRuntime.cameraY() - config.soldierFrame * 0.44;
+
+                if (state.bossWaveFx.facingX !== 0) {
+                    ctx.moveTo(bx, by - major * 0.5);
+                    ctx.quadraticCurveTo(bx + minor * state.bossWaveFx.facingX, by, bx, by + major * 0.5);
+                } else {
+                    ctx.moveTo(bx - major * 0.5, by);
+                    ctx.quadraticCurveTo(bx, by + minor * state.bossWaveFx.facingY, bx + major * 0.5, by);
+                }
+                ctx.stroke();
+                ctx.restore();
+
+                if (state.bossWaveFx.alpha <= 0) state.bossWaveFx.active = false;
+            }
         }
 
         function updateSoldierPosition() {
@@ -1248,12 +1381,21 @@
                 enemyEl.style.left = `${px - cameraX - config.goblinFrame / 2}px`;
                 enemyEl.style.top = `${py - cameraY - config.goblinFrame}px`;
                 setGoblinFacingByX(enemyEl, cppRuntime.enemyFacingXAt(i));
+                try {
+                    if (typeof cppRuntime.enemyRoleKindAt === 'function') {
+                        const rk = cppRuntime.enemyRoleKindAt(i);
+                        enemyEl.classList.toggle('is-king', rk === 1);
+                    }
+                } catch (err) {
+                    // ignore
+                }
+
                 updateEnemyAnimationAt(enemyEl, i, px, py, now);
             }
         }
 
         function movePlayer(dx, dy) {
-            if (!cppRuntime || !gameplayReady || deathOverlayVisible || isPlayerDeadState()) return;
+            if (!cppRuntime || !gameplayReady || deathOverlayVisible || victoryOverlayVisible || isPlayerDeadState()) return;
             cppRuntime.requestMove(dx, dy, performance.now());
         }
 
@@ -1325,10 +1467,7 @@
 
             const now = performance.now();
             if (now < startupSafetyUntilMs) {
-                if (deathOverlayVisible) {
-                    deathOverlayEl.hidden = true;
-                    deathOverlayVisible = false;
-                }
+                setDeathOverlayVisible(false);
                 state.playerDeathShown = false;
                 return;
             }
@@ -1337,10 +1476,7 @@
             const deathFinished = cppRuntime.playerDeathFinished();
 
             if (!playerDead) {
-                if (deathOverlayVisible) {
-                    deathOverlayEl.hidden = true;
-                    deathOverlayVisible = false;
-                }
+                setDeathOverlayVisible(false);
                 state.playerDeathShown = false;
                 return;
             }
@@ -1350,15 +1486,170 @@
             }
 
             if (playerDead && deathFinished) {
-                if (!deathOverlayVisible) {
-                    deathOverlayEl.hidden = false;
-                    deathOverlayVisible = true;
-                }
+                setDeathOverlayVisible(true);
                 state.playerDeathShown = true;
             }
         }
 
+        function syncVictoryOverlay() {
+            if (!config.victoryOnBossDeath || !cppRuntime || !gameplayReady || !victoryOverlayEl) return;
+
+            const now = performance.now();
+            if (now < startupSafetyUntilMs || isPlayerDeadState()) {
+                setVictoryOverlayVisible(false);
+                return;
+            }
+
+            if (deathOverlayVisible) {
+                setVictoryOverlayVisible(false);
+                return;
+            }
+
+            if (state.goblinKingDefeated) {
+                setVictoryOverlayVisible(true);
+                return;
+            }
+
+            let bossFound = false;
+            let bossAlive = false;
+            const enemyCount = cppRuntime.enemyCount();
+            for (let i = 0; i < enemyCount; i++) {
+                if (cppRuntime.enemyRoleKindAt && cppRuntime.enemyRoleKindAt(i) === 1) {
+                    bossFound = true;
+                    if (!cppRuntime.enemyIsDeadAt(i) && !cppRuntime.enemyIsRemovedAt(i)) {
+                        bossAlive = true;
+                        break;
+                    }
+                }
+            }
+
+            if (bossFound && !bossAlive) {
+                state.goblinKingDefeated = true;
+                setVictoryOverlayVisible(true);
+            }
+        }
+
         function renderFrame(now) {
+            if (state.candleMechanic && state.candleMechanic.active) {
+                let isBossAlive = false;
+                const enemyCount = cppRuntime.enemyCount();
+                for (let i = 0; i < enemyCount; i++) {
+                    if (cppRuntime.enemyRoleKindAt && cppRuntime.enemyRoleKindAt(i) === 1 && !cppRuntime.enemyIsDeadAt(i) && !cppRuntime.enemyIsRemovedAt(i)) {
+                        isBossAlive = true;
+                        break;
+                    }
+                }
+
+                if (!isBossAlive) {
+                    state.candleMechanic.active = false;
+                } else {
+                    const currentTurn = cppRuntime.playerCurrentTurn();
+                    if (currentTurn > state.candleMechanic.lastTurnProcessed) {
+                        const turnsPassed = currentTurn - state.candleMechanic.lastTurnProcessed;
+                        state.candleMechanic.lastTurnProcessed = currentTurn;
+
+                        for (let i = 0; i < turnsPassed; i++) {
+                            const activeCandle = CANDLE_POSITIONS[state.candleMechanic.currentIndex];
+                            const healAmount = 25;
+
+                            const px = cppRuntime.playerTileX();
+                            const py = cppRuntime.playerTileY();
+                            if (Math.abs(px - activeCandle.x) <= 1 && Math.abs(py - activeCandle.y) <= 1) {
+                                if (!cppRuntime.playerIsDead() && cppRuntime.playerCurrentHp() > 0) {
+                                    cppRuntime.setPlayerHp(Math.min(cppRuntime.playerMaxHp(), cppRuntime.playerCurrentHp() + healAmount));
+                                }
+                            }
+
+                            /* for (let e = 0; e < enemyCount; e++) {
+                                if (cppRuntime.enemyIsRemovedAt(e) || cppRuntime.enemyIsDeadAt(e)) continue;
+                                const ex = cppRuntime.enemyTileXAt(e);
+                                const ey = cppRuntime.enemyTileYAt(e);
+                                if (Math.abs(ex - activeCandle.x) <= 1 && Math.abs(ey - activeCandle.y) <= 1) {
+                                    const newHp = Math.min(cppRuntime.enemyMaxHpAt(e), cppRuntime.enemyCurrentHpAt(e) + healAmount);
+                                    cppRuntime.enemySetHpAt(e, newHp);
+                                }
+                            } */
+
+                            state.candleMechanic.turnsLeft--;
+                            if (state.candleMechanic.turnsLeft <= 0) {
+                                state.candleMechanic.currentIndex = (state.candleMechanic.currentIndex + 1) % CANDLE_POSITIONS.length;
+                                state.candleMechanic.turnsLeft = 5;
+                            }
+                        }
+                    }
+                }
+            }
+
+            const enemyCount = cppRuntime.enemyCount();
+            for (let i = 0; i < enemyCount; i++) {
+                if (cppRuntime.enemyIsRemovedAt(i) || cppRuntime.enemyIsDeadAt(i)) continue;
+                const castingId = cppRuntime.enemyCastingSkillIdAt(i);
+                if (castingId > 0 && cppRuntime.enemyConsumeSkillImpactAt(i)) {
+                    if (castingId === 1) { // 技能1：引燃
+                        showPlayerBubble("【引燃】全场蜡烛区域沸腾！", 4000);
+                        state.bossIgniteMechanic.active = true;
+                        state.bossIgniteMechanic.turnsLeft = 5;
+                        state.bossIgniteMechanic.lastTurnProcessed = cppRuntime.playerCurrentTurn();
+                    } 
+                    else if (castingId === 2) { // 技能2：兵来
+                        showPlayerBubble("【兵来】哥布林大王召唤了手下！", 4000);
+                        const spawnPos = [{ x: 14, y: 19 }, { x: 20, y: 19 }, { x: 17, y: 19 }];
+                        for (const pos of spawnPos) {
+                            const newIdx = cppRuntime.enemyCount();
+                            if (typeof cppRuntime.enemySetRoleAt === 'function') {
+                                cppRuntime.enemySetRoleAt(newIdx, 0);
+                            }
+                            cppRuntime.setEnemySpawnAt(newIdx, pos.x, pos.y);
+                        }
+                    } 
+                    else if (castingId === 3) { // 技能3：化形
+                        showPlayerBubble("【化形】大王偷学了你的绝招！", 4000);
+                        const isArcher = cppRuntime.playerRoleName().includes("只射直线的传奇弓箭手");
+                        const bossAtk = cppRuntime.enemyAttackPowerAt(i);
+                        const bX = cppRuntime.enemyTileXAt(i);
+                        const bY = cppRuntime.enemyTileYAt(i);
+                        const pX = cppRuntime.playerTileX();
+                        const pY = cppRuntime.playerTileY();
+
+                        if (isArcher) {
+                            bossShootEightWayArrows(bX, bY, Math.floor(bossAtk * 0.5));
+                        } else {
+                            bossShootBigWave(bX, bY, pX, pY, Math.floor(bossAtk - 10));
+                        }
+                    }
+                }
+            }
+
+            if (state.bossIgniteMechanic && state.bossIgniteMechanic.active) {
+                const currentTurn = cppRuntime.playerCurrentTurn();
+                if (currentTurn > state.bossIgniteMechanic.lastTurnProcessed) {
+                    const turnsPassed = currentTurn - state.bossIgniteMechanic.lastTurnProcessed;
+                    state.bossIgniteMechanic.lastTurnProcessed = currentTurn;
+
+                    for (let k = 0; k < turnsPassed; k++) {
+                        const px = cppRuntime.playerTileX();
+                        const py = cppRuntime.playerTileY();
+                        let hitByIgnite = false;
+
+                        for (const candle of CANDLE_POSITIONS) {
+                            if (Math.abs(px - candle.x) <= 2 && Math.abs(py - candle.y) <= 2) {
+                                hitByIgnite = true; break;
+                            }
+                        }
+
+                        if (hitByIgnite && !cppRuntime.playerIsDead() && cppRuntime.playerCurrentHp() > 0) {
+                            cppRuntime.setPlayerHp(Math.max(0, cppRuntime.playerCurrentHp() - 15));
+                        }
+
+                        state.bossIgniteMechanic.turnsLeft--;
+                        if (state.bossIgniteMechanic.turnsLeft <= 0) {
+                            state.bossIgniteMechanic.active = false;
+                            break;
+                        }
+                    }
+                }
+            }
+
             const currentNow = now ?? performance.now();
             cppRuntime.update(currentNow);
 
@@ -1403,7 +1694,112 @@
             updateDarkness();
             updatePositionText();
             syncDeathOverlay();
+            try {
+                if (config.mapFileName === 'map03.html' && !state.goblinKingSpawned) {
+                    const enemyCountNow = cppRuntime.enemyCount();
+                    let aliveEnemies = 0;
+                    for (let i = 0; i < enemyCountNow; i++) {
+                        if (cppRuntime.enemyIsRemovedAt(i)) continue;
+                        if (!cppRuntime.enemyIsDeadAt(i)) aliveEnemies++;
+                    }
+                    if (aliveEnemies === 0) {
+                        const spawnIndex = cppRuntime.enemyCount();
+                        if (typeof cppRuntime.enemySetRoleAt === 'function') {
+                            cppRuntime.enemySetRoleAt(spawnIndex, 1);
+                        }
+                        cppRuntime.setEnemySpawnAt(spawnIndex, 17, 19);
+                        state.goblinKingSpawned = true;
+                        state.goblinKingDefeated = false;
+                        state.portalClosed = true;
+                        showPlayerBubble("好凶的哥布林！而且回去的路好像被堵上了……", 4200);
+                    }
+                    state.candleMechanic.active = true;
+                state.candleMechanic.currentIndex = Math.floor(Math.random() * CANDLE_POSITIONS.length);
+                state.candleMechanic.turnsLeft = 5;
+                state.candleMechanic.lastTurnProcessed = cppRuntime.playerCurrentTurn();
+                }
+            } catch (err) {
+                console.warn('boss spawn check failed:', err);
+            }
+
             checkSpecialEvent();
+            syncVictoryOverlay();
+        }
+
+        function bossShootEightWayArrows(startX, startY, damage) {
+            const pX = cppRuntime.playerTileX();
+            const pY = cppRuntime.playerTileY();
+            const dirs = [
+                {x: -1, y: 0}, {x: 1, y: 0}, {x: 0, y: -1}, {x: 0, y: 1},
+                {x: -1, y: -1}, {x: 1, y: -1}, {x: -1, y: 1}, {x: 1, y: 1}
+            ];
+            const maxRange = 10;
+            let hitPlayer = false;
+            const gridOffset = 1.6 * config.worldScale * state.tileHeight;
+
+            dirs.forEach(initialDir => {
+                let current = { x: startX, y: startY };
+                let dir = { x: initialDir.x, y: initialDir.y };
+                let turned = false;
+                const tileSegments = [current];
+
+                for (let travelled = 0; travelled < maxRange; travelled++) {
+                    let next = { x: current.x + dir.x, y: current.y + dir.y };
+                    if (isSolidTileAt(next.x, next.y + config.collisionTileOffsetY)) {
+                        if (turned) break;
+                        dir.x = -dir.x; dir.y = -dir.y;
+                        turned = true;
+                        next = { x: current.x + dir.x, y: current.y + dir.y };
+                        if (isSolidTileAt(next.x, next.y + config.collisionTileOffsetY)) break;
+                    }
+                    current = next;
+                    tileSegments.push(current);
+                    if (current.x === pX && current.y === pY) hitPlayer = true;
+                }
+
+                if (tileSegments.length > 1) {
+                    const worldSegments = tileSegments.map(t => {
+                        const tw = tileToWorldPoint(t.x, t.y);
+                        return { x: tw.x, y: tw.y - config.soldierFrame * 0.44 - gridOffset };
+                    });
+                    state.arrowShots.list.push({
+                        startMs: performance.now(), durationMs: 300,
+                        startX: worldSegments[0].x, startY: worldSegments[0].y,
+                        targetX: worldSegments[worldSegments.length - 1].x,
+                        targetY: worldSegments[worldSegments.length - 1].y,
+                        segments: worldSegments, isBossSkill: true
+                    });
+                }
+            });
+
+            if (hitPlayer && !cppRuntime.playerIsDead() && cppRuntime.playerCurrentHp() > 0) {
+                cppRuntime.setPlayerHp(Math.max(0, cppRuntime.playerCurrentHp() - damage));
+            }
+        }
+
+        function bossShootBigWave(startX, startY, pX, pY, damage) {
+            let dx = pX - startX, dy = pY - startY;
+            let facingX = 0, facingY = 0;
+            if (Math.abs(dx) >= Math.abs(dy)) facingX = dx > 0 ? 1 : -1;
+            else facingY = dy > 0 ? 1 : -1;
+
+            let hit = false;
+            if (facingX !== 0 && (pX - startX) * facingX > 0 && Math.abs(pY - startY) <= 1) hit = true;
+            if (facingY !== 0 && (pY - startY) * facingY > 0 && Math.abs(pX - startX) <= 1) hit = true;
+
+            if (hit && !cppRuntime.playerIsDead() && cppRuntime.playerCurrentHp() > 0) {
+                cppRuntime.setPlayerHp(Math.max(0, cppRuntime.playerCurrentHp() - damage)); 
+            }
+
+            state.bossWaveFx.active = true;
+            state.bossWaveFx.alpha = 1.0;
+            const tw = tileToWorldPoint(startX, startY);
+            state.bossWaveFx.x = tw.x; 
+            state.bossWaveFx.y = tw.y;
+            state.bossWaveFx.targetX = tw.x + facingX * 250;
+            state.bossWaveFx.targetY = tw.y + facingY * 250;
+            state.bossWaveFx.facingX = facingX; 
+            state.bossWaveFx.facingY = facingY;
         }
 
         function animate(now) {
@@ -1512,8 +1908,8 @@
 
                 state.lastTileX = cppRuntime.playerTileX();
                 state.lastTileY = cppRuntime.playerTileY();
-                deathOverlayEl.hidden = true;
-                deathOverlayVisible = false;
+                setDeathOverlayVisible(false);
+                setVictoryOverlayVisible(false);
                 state.playerDeathShown = false;
                 statusEl.textContent = `${cppRuntime.playerRoleName()} | HP ${cppRuntime.playerCurrentHp()}/${cppRuntime.playerMaxHp()} | ATK ${cppRuntime.playerAttackPower()} | 当前位置: (${state.lastTileX}, ${state.lastTileY})`;
                 renderFrame(performance.now());
@@ -1542,10 +1938,8 @@
 
                     const fullHp = cppRuntime.playerMaxHp();
                     sessionStorage.setItem('yz_global_hp', fullHp);
-                    deathOverlayEl.hidden = true;
-
-                    deathOverlayEl.hidden = true;
-                    deathOverlayVisible = false;
+                    setDeathOverlayVisible(false);
+                    setVictoryOverlayVisible(false);
                     state.playerDeathShown = false;
                     lastObservedHp = cppRuntime.playerCurrentHp();
                     deathByHpTransition = false;
@@ -1553,12 +1947,23 @@
                 });
 
                 exitButtonEl.addEventListener('click', () => {
-                    deathOverlayEl.hidden = true;
-                    deathOverlayVisible = false;
+                    setDeathOverlayVisible(false);
                     const runToken = new URLSearchParams(window.location.search).get('run');
                     const target = buildExitTarget(runToken);
                     fadeOutMapBgmAndLeave(target);
                 });
+
+                if (victoryExitButtonEl) {
+                    victoryExitButtonEl.addEventListener('click', () => {
+                        setVictoryOverlayVisible(false);
+                        const runToken = new URLSearchParams(window.location.search).get('run');
+                        const target = buildExitTarget(runToken);
+                        fadeOutMapBgmAndLeave(target);
+                    });
+                }
+
+                setDeathOverlayVisible(false);
+                setVictoryOverlayVisible(false);
 
                 window.addEventListener('resize', () => {
                     resizeViewport();

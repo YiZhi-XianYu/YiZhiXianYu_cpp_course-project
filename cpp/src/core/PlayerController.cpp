@@ -699,7 +699,7 @@ void PlayerController::startBigSkillAction(float nowMs) {
     }
 
     if (role_.kind() == RoleKind::LegendaryLineArcher) {
-        bigSkillCooldownUntilTurn_ = turnCounter_ + 12;
+        bigSkillCooldownUntilTurn_ = turnCounter_ + 13;
         attacking_ = false;
         bigSkillCasting_ = false;
         attackStartTimeMs_ = 0.0f;

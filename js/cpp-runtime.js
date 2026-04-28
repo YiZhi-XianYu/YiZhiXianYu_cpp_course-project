@@ -445,6 +445,11 @@ async function createCppRuntime() {
         setSpawn: module.cwrap('gc_set_spawn', null, ['number', 'number']),
         setEnemySpawn: module.cwrap('gc_enemy_set_spawn', null, ['number', 'number']),
         setEnemySpawnAt: module.cwrap('gc_enemy_set_spawn_at', null, ['number', 'number', 'number']),
+        playerCurrentTurn: module.cwrap('gc_player_current_turn', 'number', []),
+        enemySetHpAt: module.cwrap('gc_enemy_set_hp_at', null, ['number', 'number']),
+        enemyMaxHpAt: module.cwrap('gc_enemy_max_hp_at', 'number', ['number']),
+        enemySetRoleAt: module.cwrap('gc_enemy_set_role_at', null, ['number', 'number']),
+        enemyRoleKindAt: module.cwrap('gc_enemy_role_kind_at', 'number', ['number']),
         centerCamera: module.cwrap('gc_center_camera', null, []),
         requestMove: module.cwrap('gc_request_move', null, ['number', 'number', 'number']),
         requestAttack: module.cwrap('gc_request_attack', null, ['number']),
@@ -524,7 +529,10 @@ async function createCppRuntime() {
         enemyAttackAreaX: module.cwrap('gc_enemy_attack_area_x', 'number', ['number']),
         enemyAttackAreaY: module.cwrap('gc_enemy_attack_area_y', 'number', ['number']),
         cameraX: module.cwrap('gc_camera_x', 'number', []),
-        cameraY: module.cwrap('gc_camera_y', 'number', [])
+        cameraY: module.cwrap('gc_camera_y', 'number', []),
+        enemyCastingSkillIdAt: module.cwrap('gc_enemy_casting_skill_id_at', 'number', ['number']),
+        enemyConsumeSkillImpactAt: module.cwrap('gc_enemy_consume_skill_impact_at', 'number', ['number']),
+        enemyAttackPowerAt: module.cwrap('gc_enemy_attack_power_at', 'number', ['number'])
     };
 
     return {
@@ -558,6 +566,15 @@ async function createCppRuntime() {
         },
         setEnemySpawnAt(index, tileX, tileY) {
             api.setEnemySpawnAt(index, tileX, tileY);
+        },
+        playerCurrentTurn() {
+            return api.playerCurrentTurn();
+        },
+        enemySetHpAt(index, hp) {
+            api.enemySetHpAt(index, hp);
+        },
+        enemyMaxHpAt(index) {
+            return api.enemyMaxHpAt(index);
         },
         centerCamera() {
             api.centerCamera();
@@ -730,6 +747,12 @@ async function createCppRuntime() {
         enemyCurrentHpAt(index) {
             return api.enemyCurrentHpAt(index);
         },
+        enemySetRoleAt(index, roleKind) {
+            api.enemySetRoleAt(index, roleKind);
+        },
+        enemyRoleKindAt(index) {
+            return api.enemyRoleKindAt(index);
+        },
         enemyAttackAreaCountAt(index) {
             return api.enemyAttackAreaCountAt(index);
         },
@@ -798,6 +821,15 @@ async function createCppRuntime() {
         },
         cameraY() {
             return api.cameraY();
+        },
+        enemyCastingSkillIdAt(index) { 
+            return api.enemyCastingSkillIdAt(index); 
+        },
+        enemyConsumeSkillImpactAt(index) { 
+            return api.enemyConsumeSkillImpactAt(index) === 1; 
+        },
+        enemyAttackPowerAt(index) { 
+            return api.enemyAttackPowerAt(index); 
         }
     };
 }

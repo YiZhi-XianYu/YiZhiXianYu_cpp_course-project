@@ -46,6 +46,11 @@ void MonsterController::setSpawn(TilePos spawn) {
     hurtStartTimeMs_ = 0.0f;
     deathStartTimeMs_ = 0.0f;
 
+    castingSkillId_ = 0;
+    skillImpactConsumed_ = false;
+    skillCooldowns_ = {0, 0, 0};
+    globalSkillCooldown_ = 0;
+
     move_ = MoveState{};
     attacking_ = false;
     attackVariant_ = 0;
@@ -118,7 +123,16 @@ void MonsterController::update(float nowMs,
         }
     }
 
-    if (attacking_) {
+    if (castingSkillId_ != 0) {
+        const float elapsed = nowMs - attackStartTimeMs_;
+        const float duration = std::max(1.0f, config_.attackDurationMs);
+        if (!attackImpactResolved_ && elapsed >= duration * 0.5f) {
+            attackImpactResolved_ = true;
+        }
+        if (elapsed >= duration) {
+            castingSkillId_ = 0;
+        }
+    } else if (attacking_) {
         const float elapsedAttack = nowMs - attackStartTimeMs_;
         const float attackDuration = std::max(1.0f, config_.attackDurationMs);
         if (!attackImpactResolved_ && elapsedAttack >= attackDuration * 0.5f) {
@@ -142,6 +156,32 @@ void MonsterController::onPlayerTurnAdvanced(
     lastProcessedPlayerTurn_ = playerTurn;
 
     if (dead_ || removed_ || move_.active || attacking_) return;
+
+    if (castingSkillId_ != 0) return;
+
+    if (globalSkillCooldown_ > 0) globalSkillCooldown_--;
+    for (auto& cd : skillCooldowns_) if (cd > 0) cd--;
+
+    if (role_.displayName() == "哥布林大王" && globalSkillCooldown_ <= 0) {
+        std::uniform_int_distribution<std::int32_t> chance(1, 100);
+        if (chance(rng_) <= 40) {
+            std::vector<std::int32_t> available;
+            for (int i = 0; i < 3; ++i) {
+                if (skillCooldowns_[i] <= 0) available.push_back(i + 1);
+            }
+            if (!available.empty()) {
+                std::uniform_int_distribution<std::size_t> pick(0, available.size() - 1);
+                castingSkillId_ = available[pick(rng_)]; // 随机选取1/2/3技能
+                skillCooldowns_[static_cast<std::size_t>(castingSkillId_ - 1)] = 30;
+                globalSkillCooldown_ = 6;
+                
+                attackImpactResolved_ = false;
+                skillImpactConsumed_ = false;
+                attackStartTimeMs_ = nowMs;
+                return;
+            }
+        }
+    }
 
     if (!discovered_ && inDiscoverRange(playerTile)) {
         discovered_ = true;
@@ -300,6 +340,11 @@ void MonsterController::startMove(TilePos nextTile, float nowMs) {
     move_.targetTile = nextTile;
 }
 
+void MonsterController::setHp(std::int32_t hp) {
+    if (dead_ || removed_) return;
+    currentHp_ = std::clamp(hp, 0, role_.stats().maxHp);
+}
+
 bool MonsterController::tryMoveBy(TilePos offset, float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
     if (dead_ || removed_) return false;
@@ -409,6 +454,16 @@ void MonsterController::finishMove() {
     tilePos_ = move_.targetTile;
     worldPos_ = move_.targetWorld;
     move_.active = false;
+}
+
+std::int32_t MonsterController::castingSkillId() const {
+    return castingSkillId_;
+}
+
+bool MonsterController::consumeSkillImpactReady() {
+    if (castingSkillId_ == 0 || !attackImpactResolved_ || skillImpactConsumed_) return false;
+    skillImpactConsumed_ = true;
+    return true;
 }
 
 } // namespace core

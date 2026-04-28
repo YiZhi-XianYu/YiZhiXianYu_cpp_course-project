@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>地牢战斗 - Map 03</title>
-    <link rel="stylesheet" href="../css/map-game.css?v=20260427-3">
+    <link rel="stylesheet" href="../css/map-game.css?v=20260428-1">
 </head>
 <body>
     <main class="shell">
@@ -27,9 +27,19 @@
         </div>
     </div>
 
+    <div class="victory-overlay" id="victory-overlay" hidden>
+        <div class="victory-panel" role="dialog" aria-modal="true" aria-labelledby="victory-title">
+            <h2 class="victory-title" id="victory-title">胜利！</h2>
+            <p class="victory-text" id="victory-text">哥布林大王已经被击败</p>
+            <div class="victory-actions">
+                <button type="button" class="exit" id="victory-exit-button">退出</button>
+            </div>
+        </div>
+    </div>
+
     <script src="../cpp/web/game_core.js?v=20260427-1"></script>
     <script src="../js/cpp-runtime.js?v=20260427-1"></script>
-    <script src="../js/map-game-shared.js?v=20260427-4"></script>
+    <script src="../js/map-game-shared.js?v=20260428-1"></script>
     <script>
         startMapGame({
             mapFileName: 'map03.html',
@@ -40,17 +50,19 @@
                 '../assets/bgm/地牢战斗bgm1.mp3'
             ],
             
-            spawnTile: { x: 17, y: 18 }, 
+            spawnTile: { x: 17, y: 16 }, 
 
             enemySpawns: [
-                /* { x: 15, y: 15 },
-                { x: 19, y: 15 } */
+                { x: 14, y: 19 },
+                { x: 20, y: 19 },
+                { x: 17, y: 22 }
             ],
 
             eventTile: { x: 17, y: 19 },
             specialEventTarget: './map02.html',
             specialEventEntryTag: 'map03',
-            specialEventMode: 'armed'
+            specialEventMode: 'armed',
+            victoryOnBossDeath: true
         });
     </script>
 </body>

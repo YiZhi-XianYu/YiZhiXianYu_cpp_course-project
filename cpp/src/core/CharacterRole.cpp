@@ -25,14 +25,14 @@ CharacterRole CharacterRole::legendaryLineArcher() {
     role.displayName_ = "只射直线的传奇弓箭手";
     role.stats_.maxHp = 300;
     role.stats_.attackPower = 50;
-    role.normalAttack_.name = "直线箭矢";
+    role.normalAttack_.name = "直线发射箭矢";
     role.normalAttack_.rangeTiles = 10;
     role.normalAttack_.autoLock = false;
     role.normalAttack_.hasAreaEffect = false;
     role.smallSkill_.name = "小技能";
-    role.smallSkill_.enabled = false;
+    role.smallSkill_.enabled = true;
     role.bigSkill_.name = "大技能";
-    role.bigSkill_.enabled = false;
+    role.bigSkill_.enabled = true;
     return role;
 }
 

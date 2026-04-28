@@ -27,18 +27,26 @@ public:
         std::int32_t discoverRadius = 2;
     };
 
+    struct SkillProfile {
+        std::string name;
+        bool enabled = false;
+    };
+
     static MonsterRole goblin();
+    static MonsterRole goblinKing();
 
     [[nodiscard]] const std::string& displayName() const;
     [[nodiscard]] const Stats& stats() const;
     [[nodiscard]] const AttackProfile& normalAttack() const;
     [[nodiscard]] const VisionProfile& vision() const;
+    [[nodiscard]] const SkillProfile& skill() const;
 
 private:
     std::string displayName_;
     Stats stats_;
     AttackProfile normalAttack_;
     VisionProfile vision_;
+    SkillProfile skill_;
 };
 
 } // namespace core
