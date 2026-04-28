@@ -376,8 +376,7 @@ std::optional<TilePos> MonsterController::nextShortestStepToward(
 
             const std::int32_t nextIndex = indexOf(next);
             if (visited[static_cast<std::size_t>(nextIndex)] != 0) continue;
-            // 目标点是玩家所在格时，允许作为搜索终点参与路径计算；
-            // 这样可求得“朝玩家最短路径前进一步”的方向，同时不会真的走进玩家格。
+            
             const bool isTargetTile = (next.x == target.x && next.y == target.y);
             if (!isTargetTile && isBlocked(next.x, next.y)) continue;
 

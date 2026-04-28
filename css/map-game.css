@@ -341,10 +341,9 @@ canvas {
     }
 }
 
-/* 新增：角色对话/提示方框样式 */
 .thought-bubble {
     position: absolute;
-    bottom: 50%; /* 贴近角色头部上方，避免飘得太高 */
+    bottom: 50%;
     left: 50%;
     --bubble-transform: translateX(-50%) scale(calc(1 / var(--sprite-scale) * var(--facing-x)), calc(1 / var(--sprite-scale)));
     transform: var(--bubble-transform);

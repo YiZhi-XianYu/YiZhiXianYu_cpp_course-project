@@ -35,22 +35,19 @@
             mapFileName: 'map03.html',
             tmxPath: '../assets/map/地牢3.tmx',
             
-            // --- 核心修改：将 BGM 改为数组，实现轮流播放 ---
             mapBgmSrc: [
                 '../assets/bgm/地牢战斗bgm2.mp3', 
                 '../assets/bgm/地牢战斗bgm1.mp3'
             ],
             
-            // 地图3的出生点：正中间偏上一格
             spawnTile: { x: 17, y: 18 }, 
-            // 可以在这里配置地图3的敌人
+
             enemySpawns: [
                 /* { x: 15, y: 15 },
                 { x: 19, y: 15 } */
             ],
-            // 地图3离开的触发点：正中间
+
             eventTile: { x: 17, y: 19 },
-            // 目标是指向地图2
             specialEventTarget: './map02.html',
             specialEventEntryTag: 'map03',
             specialEventMode: 'armed'

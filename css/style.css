@@ -1,4 +1,3 @@
-/* 基础网页设定与宇宙深蓝渐变背景 */
 body, html {
     margin: 0;
     padding: 0;
@@ -10,7 +9,7 @@ body, html {
     align-items: center;
     font-family: 'Press Start 2P', monospace;
     color: #ffffff;
-    overflow: hidden; /* 防止星星超出屏幕产生滚动条 */
+    overflow: hidden;
     position: relative;
 }
 
@@ -18,13 +17,11 @@ body {
     transition: background 0.5s ease, color 0.35s ease;
 }
 
-/* 白天模式：更明亮的天空配色 */
 body.day-mode {
     background: radial-gradient(circle at 50% 35%, #eaf7ff 0%, #c8e8ff 45%, #93c9ef 100%);
     color: #1e3550;
 }
 
-/* 星空容器：铺满全屏，位于背景之上、GIF 之下 */
 #stars-container {
     position: fixed;
     inset: 0;
@@ -34,7 +31,6 @@ body.day-mode {
     pointer-events: none;
 }
 
-/* GIF 背景图层（保持正方形比例） */
 #gif-bg {
     position: absolute;
     top: 50%;
@@ -43,15 +39,14 @@ body.day-mode {
     width: clamp(320px, 64vmin, 700px);
     aspect-ratio: 1 / 1;
     
-    /* 注意：请确保你的项目根目录下有 assets/background.gif 文件 */
     background-image: url('../assets/background.gif'); 
-    background-size: contain; /* 保持完整正方形内容，不拉伸 */
+    background-size: contain;
     background-position: center;
     background-repeat: no-repeat;
     
-    z-index: 1; /* 放在 UI 下面，星星上面 */
-    opacity: 0.8; /* 稍微降低透明度，更好地融入星空 */
-    image-rendering: pixelated; /* 保持像素风的锐利边缘 */
+    z-index: 1;
+    opacity: 0.8;
+    image-rendering: pixelated;
 }
 
 @media (max-width: 1200px) {
@@ -83,7 +78,7 @@ body.day-mode .star {
 
 #main-menu {
     text-align: center;
-    background-color: rgba(43, 43, 43, 0.85); /* 半透明深灰底色，防止背景太花看不清字 */
+    background-color: rgba(43, 43, 43, 0.85);
     padding: 40px 60px;
     box-shadow: 
         -4px 0 0 0 #fff, 

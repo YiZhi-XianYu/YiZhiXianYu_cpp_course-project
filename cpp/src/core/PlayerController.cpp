@@ -586,8 +586,6 @@ void PlayerController::startMoveAction(const MoveRequest& action, float nowMs,
 void PlayerController::startAttackAction(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy) {
     if (dead_) return;
-
-    // 普通攻击按前/左/右/后优先级在近战范围内寻敌，命中后立即转向。
     if (!isSmallSkillActive() && role_.normalAttack().autoLock) {
         const auto enemyInDirection = [&](Facing candidateFacing) {
             const TilePos dir = forwardVector(candidateFacing);
@@ -659,16 +657,14 @@ void PlayerController::startSmallSkillAction(float nowMs,
     if (!smallSkillReady()) return;
 
     if (role_.kind() == RoleKind::LegendaryLineArcher) {
-        // 【修改点1】极致爽快，CD 只要 2 回合！
         smallSkillCooldownUntilTurn_ = turnCounter_ + 2;
-
         attacking_ = true;
         bigSkillCasting_ = false;
         attackStartTimeMs_ = nowMs;
         attackImpactResolved_ = false;
         attackImpactConsumed_ = false;
         attackVariant_ = 3;  
-        attackDamageScalePercent_ = 150; // 150% 伤害
+        attackDamageScalePercent_ = 150;
         attackUsesAutoLock_ = false;
         archerSmallSkillAttack_ = true;
 
@@ -676,29 +672,18 @@ void PlayerController::startSmallSkillAction(float nowMs,
         TilePos current = tilePos_;
         Facing currentFacing = facing_;
 
-        // 识别“真正的墙壁”（忽略肉体）
         auto isWall = [&](std::int32_t x, std::int32_t y) {
             return isBlocked(x, y) && !hasEnemy(x, y);
         };
-
-        // 【修改点2】直线 10 格，无情贯穿
         for (int step = 1; step <= 10; ++step) {
             TilePos next = addTile(current, forwardVector(currentFacing));
-
-            // 撞到真墙壁才停下
             if (isWall(next.x, next.y)) {
                 break; 
             }
-
-            // 无论是空地还是哥布林，一律碾过去并加入判定范围
             current = next;
             cachedSmallSkillTiles_.push_back(current);
         }
-
-        // 不推回合，绝对不吞伤害
-
     } else {
-        // 战士逻辑保持不变
         smallSkillCooldownUntilTurn_ = turnCounter_ + 17;
         smallSkillActiveUntilTurn_ = turnCounter_ + 11;
         attackDamageScalePercent_ = 150;
@@ -726,7 +711,6 @@ void PlayerController::startBigSkillAction(float nowMs) {
 
         archerBlessingActivateOnNextTurn_ = true;
         archerVolleyPending_ = false;
-        // 弓箭手大技能不播放攻击动作：直接结算“消耗本回合”，下一回合开始生效白光祝福。
         onTurnAdvanced();
         (void)nowMs;
         return;
@@ -737,7 +721,6 @@ void PlayerController::startBigSkillAction(float nowMs) {
     bigWave_.active = true;
     bigWave_.originTile = tilePos_;
     bigWave_.facing = facing_;
-    // 从角色脚下开始生成剑气，后续按回合向前推进。
     bigWave_.frontDistance = 0;
 
     attacking_ = true;
@@ -798,7 +781,6 @@ void PlayerController::finishMove(float nowMs,
 void PlayerController::setPlayerHp(std::int32_t hp) {
     currentHp_ = hp;
     
-    // 同步更新死亡状态，防止出现 0 血还能走动的情况
     if (currentHp_ <= 0) {
         currentHp_ = 0;
         dead_ = true;

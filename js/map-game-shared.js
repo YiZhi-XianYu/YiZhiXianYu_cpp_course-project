@@ -102,24 +102,19 @@
         const reviveButtonEl = document.getElementById('revive-button');
         const exitButtonEl = document.getElementById('exit-button');
         const darknessOverlayEl = document.getElementById('darkness-overlay');
-
-        // --- 新增：支持 BGM 数组轮播 ---
         const bgmList = Array.isArray(config.mapBgmSrc) ? config.mapBgmSrc : [config.mapBgmSrc];
         let currentBgmIndex = 0;
-        
         const mapBgmAudio = new Audio(bgmList[currentBgmIndex]);
         mapBgmAudio.preload = 'auto';
         mapBgmAudio.volume = 0;
 
-        // 如果只有一首歌，直接使用原生循环；如果有两首及以上，则监听播放结束事件进行切歌
         if (bgmList.length === 1) {
             mapBgmAudio.loop = true;
         } else {
             mapBgmAudio.loop = false;
             mapBgmAudio.addEventListener('ended', async () => {
-                if (mapBgmLeaving) return; // 如果正在切换地图，则不再切歌
+                if (mapBgmLeaving) return;
                 
-                // 切换到下一首歌的索引，如果到底了就回到0
                 currentBgmIndex = (currentBgmIndex + 1) % bgmList.length;
                 mapBgmAudio.src = bgmList[currentBgmIndex];
                 mapBgmAudio.currentTime = 0;
@@ -192,9 +187,8 @@
             }
         };
 
-        // 在约 100 行位置（获取 DOM 元素后）添加
         function showPlayerBubble(text, duration = 3600) {
-            // 移除旧气泡
+
             const oldBubble = soldierEl.querySelector('.thought-bubble');
             if (oldBubble) oldBubble.remove();
 
@@ -213,17 +207,11 @@
 
         function updateDarkness() {
             if (!config.darknessRadius || !darknessOverlayEl) return;
-            
-            // 获取角色屏幕坐标
+
             const px = cppRuntime.playerWorldX() - cppRuntime.cameraX();
-            // playerWorldY 是脚底坐标，减去半个格子的高度让光源对准身体中心
             const py = cppRuntime.playerWorldY() - cppRuntime.cameraY() - (state.tileHeight * config.worldScale * 2);
-            
-            // 将格子半径转换为真实像素半径
             const radiusInPx = config.darknessRadius * state.tileWidth * config.worldScale;
-            
-            // 使用 radial-gradient 创建手电筒般的透光效果
-            // 中心完全透明 -> 40%处微暗 -> 半径边缘接近纯黑 -> 外部全黑
+
             darknessOverlayEl.style.background = `radial-gradient(circle at ${px}px ${py}px, 
                 rgba(0,0,0,0) 0%, 
                 rgba(0,0,0,0.1) ${radiusInPx * 0.4}px, 
@@ -555,7 +543,6 @@
             }, config.attackDurationMs * 0.8);
         }
 
-        // ==== 【修改】大技能：八向箭雨前端生成逻辑 (支持墙壁反弹动画) ====
         function triggerEightWayArrows() {
             if (!cppRuntime) return;
 
@@ -570,7 +557,6 @@
             
             const maxRange = 10;
 
-            // 辅助函数1：检查某地块是否有存活敌人
             const hasAliveEnemyAt = (x, y) => {
                 const enemyCount = cppRuntime.enemyCount();
                 for (let i = 0; i < enemyCount; i++) {
@@ -583,7 +569,6 @@
                 return false;
             };
 
-            // 辅助函数2：检查某地块是否是实体墙壁
             const isBlocked = (x, y) => {
                 return isSolidTileAt(x, y + config.collisionTileOffsetY);
             };
@@ -593,17 +578,14 @@
                 let dir = { x: initialDir.x, y: initialDir.y };
                 let turned = false;
 
-                // 记录箭矢飞行的每一个格子，形成多段路径
                 const tileSegments = [current];
 
-                // 完全模拟后端的物理反弹射线逻辑
                 for (let travelled = 0; travelled < maxRange; travelled++) {
                     let next = { x: current.x + dir.x, y: current.y + dir.y };
 
                     if (isBlocked(next.x, next.y)) {
-                        if (turned) break; // 已经拐过一次弯了，直接结束
+                        if (turned) break;
 
-                        // 复杂的墙面法线反弹计算 (和 C++ 核心保持100%一致)
                         if (dir.x !== 0 && dir.y !== 0) {
                             const blockX = isBlocked(current.x + dir.x, current.y);
                             const blockY = isBlocked(current.x, current.y + dir.y);
@@ -626,7 +608,7 @@
                         turned = true;
                         next = { x: current.x + dir.x, y: current.y + dir.y };
                         if (isBlocked(next.x, next.y)) {
-                            break; // 拐弯后下一格还是墙壁，彻底卡死
+                            break;
                         }
                     }
 
@@ -634,12 +616,12 @@
                     tileSegments.push(current);
 
                     if (hasAliveEnemyAt(current.x, current.y)) {
-                        break; // 击中敌人，停止穿透
+                        break;
                     }
                 }
 
                 if (tileSegments.length > 1) {
-                    // 将格子路径转化为像素世界坐标系的多段点坐标
+
                     const worldSegments = tileSegments.map(t => {
                         const tw = tileToWorldPoint(t.x, t.y);
                         return {
@@ -648,7 +630,6 @@
                         };
                     });
 
-                    // 动态计算总飞行时间，确保它就算拐弯也能保持视觉上的匀速
                     const speedPerTileMs = 28; 
                     const durationMs = Math.max(120, (tileSegments.length - 1) * speedPerTileMs);
 
@@ -659,7 +640,7 @@
                         startY: worldSegments[0].y,
                         targetX: worldSegments[worldSegments.length - 1].x,
                         targetY: worldSegments[worldSegments.length - 1].y,
-                        segments: worldSegments, // 将分段轨迹丢给渲染器
+                        segments: worldSegments,
                         isBigSkillVolley: true 
                     });
                 }
@@ -721,10 +702,8 @@
                 el.style.transform = `rotate(${angle}deg) scale(2, 2)`;
                 
                 if (shot.isBigSkillVolley) {
-                    // 大技能箭雨：散发金色光芒
                     el.style.filter = 'drop-shadow(0 0 6px #ffd659) drop-shadow(0 0 12px #ffaa00) brightness(1.5)';
                 } else if (shot.isSmallSkill) {
-                    // 小技能贯穿：高亮白光
                     el.style.filter = 'drop-shadow(0 0 8px white) drop-shadow(0 0 16px white) brightness(2)';
                 } else {
                     el.style.filter = 'none';
@@ -1100,8 +1079,6 @@
             if (runToken) params.push(`run=${encodeURIComponent(runToken)}`);
             if (sessionToken) params.push(`session=${encodeURIComponent(sessionToken)}`);
             if (role) params.push(`role=${encodeURIComponent(role)}`);
-
-            // 使用传入的 eventConfig
             if (eventConfig.entryTag) {
                 params.push(`entry=${encodeURIComponent(eventConfig.entryTag)}`);
             }
@@ -1120,30 +1097,23 @@
             const playerTileX = cppRuntime.playerTileX();
             const playerTileY = cppRuntime.playerTileY();
             const now = performance.now();
-
-            // --- 核心逻辑 1：在坐标 (5, 19) 捡起钥匙 ---
             const hasKey = sessionStorage.getItem('yz_map03_key') === 'true';
             if (config.mapFileName === 'map02.html' && playerTileX === 5 && playerTileY === 19 && !hasKey) {
                 console.log('[EVENT] 获取钥匙触发', { x: playerTileX, y: playerTileY });
                 sessionStorage.setItem('yz_map03_key', 'true');
                 showPlayerBubble("宝箱里竟然有钥匙，可能是通往某处的关键");
-                return; // 获得钥匙后直接返回，不触发传送
+                return;
             }
-
-            // --- 核心逻辑 2：检查传送门 ---
             const portals = config.portals || [];
             for (const portal of portals) {
                 if (playerTileX === portal.tile.x && playerTileY === portal.tile.y) {
-                    
-                    // 如果踩中的门需要钥匙，且玩家没有钥匙
                     if (portal.requireKey && !hasKey) {
                         console.log('[EVENT] 门锁提示触发', { x: playerTileX, y: playerTileY, portal });
-                        // 适当拉长提示间隔，避免气泡刚消失就立刻重刷
                         if (!state.lastKeyHintAt || now - state.lastKeyHintAt > 2800) {
                             showPlayerBubble("门锁着，似乎需要某种钥匙...");
                             state.lastKeyHintAt = now;
                         }
-                        return; // 拦截传送
+                        return;
                     }
 
                     if (config.specialEventMode === 'armed' && !specialEventArmed) {
@@ -1154,8 +1124,6 @@
                     return;
                 }
             }
-        
-            // 兼容原有的单个触发点逻辑
             const reachedDefaultEvent = playerTileX === config.eventTile.x && playerTileY === config.eventTile.y;
             if (reachedDefaultEvent) {
                 if (config.specialEventMode === 'armed' && !specialEventArmed) return;
@@ -1166,8 +1134,6 @@
                 });
                 return;
             }
-        
-            // 如果不在任何传送门上，重置 armed 状态
             specialEventArmed = true;
         }
 
@@ -1230,7 +1196,6 @@
             if (attackTiles.length > 0) {
                 if (cppRuntime.playerSmallSkillActive()) {
                     const smallSkillTiles = attackTiles.map((tile) => ({ x: tile.x, y: tile.y - 2 }));
-                    // 渲染为白色高亮（rgba(255, 255, 255, 0.4)）
                     drawTileHighlights(smallSkillTiles, 'rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 0.2)');
                 } else {
                     const normalAttackTiles = attackTiles.map((tile) => ({ x: tile.x, y: tile.y - 2 }));
@@ -1533,7 +1498,6 @@
                 const savedHp = sessionStorage.getItem('yz_global_hp');
                 if (savedHp !== null) {
                     const hpValue = parseInt(savedHp);
-                    // 只有当存档血量大于 0 时才应用，防止加载即阵亡
                     if (hpValue > 0) {
                         cppRuntime.setPlayerHp(hpValue);
                     }
@@ -1557,16 +1521,15 @@
                 void startMapBgm();
 
                 if (config.mapFileName === 'map02.html') {
-                    // 延迟 500ms 弹出，确保加载完成后视觉效果更好
                     setTimeout(() => showPlayerBubble("好黑啊……", 3800), 500);
                 }
 
                 if (config.mapFileName === 'map01.html') {
                     const visitedMap01 = sessionStorage.getItem('yz_visited_map01') === 'true';
                     if (!visitedMap01) {
-                        // 设置标记，确保本次会话（回到主界面前）不再重复弹出
+
                         sessionStorage.setItem('yz_visited_map01', 'true');
-                        // 稍微加长显示时间（5000ms），方便玩家阅读长句子
+
                         setTimeout(() => {
                             showPlayerBubble("糟了……这座地牢貌似充满亡灵气息，一旦离开这层，怪物都会恢复原状", 5000);
                         }, 800);

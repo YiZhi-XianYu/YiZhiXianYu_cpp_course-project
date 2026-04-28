@@ -366,7 +366,6 @@ void tryDispatchNextPlayerCommand(float nowMs) {
             break;
     }
 
-    // 立即尝试开行动，保证按键后在可行动帧及时生效。
     g_player->update(nowMs, isBlockedForPlayer, hasEnemyAt, true);
 }
 
@@ -430,7 +429,7 @@ void resolvePlayerBigWaveDamage(float nowMs) {
     std::int32_t previousFrontDistance = g_prevBigWaveFrontDistance;
 
     if (!g_prevBigWaveActive) {
-        // 新剑气刚释放瞬间不伤害，从 frontDistance=0 开始记录。
+
         g_prevBigWaveActive = true;
         g_bigWaveHitEnemyFlags.assign(g_enemies.size(), 0);
         g_bigWaveDamageSnapshot = std::max(1, g_player->currentAttackPower());
@@ -442,7 +441,6 @@ void resolvePlayerBigWaveDamage(float nowMs) {
         }
     }
 
-    // 剑气固定在回合末推进：仅在 frontDistance 变化时结算。
     if (currentFrontDistance == previousFrontDistance) {
         return;
     }
@@ -450,7 +448,6 @@ void resolvePlayerBigWaveDamage(float nowMs) {
     g_prevBigWaveFrontDistance = currentFrontDistance;
     if (g_player->isDead()) return;
 
-    // 结算“经过地面 + 推进后地面”：将区间内每一步四格并集作为命中区域。
     std::vector<TilePos> impactedTiles;
     const std::int32_t step = (currentFrontDistance >= previousFrontDistance) ? 1 : -1;
     for (std::int32_t distance = previousFrontDistance;; distance += step) {
@@ -492,7 +489,6 @@ void resolveEnemyAttack(float nowMs) {
     }
 
     if (totalDamage > 0) {
-        // 同一帧多怪命中只触发一次受击动画：合并伤害后只调用一次 applyDamage。
         g_player->applyDamage(totalDamage, nowMs);
     }
 }
@@ -511,7 +507,6 @@ void processEnemyTurnLogic(std::int32_t currentTurn, TilePos playerTile, float n
             return isBlockedForEnemy(x, y, playerTile, enemyIndex);
         };
 
-        // 按列表顺序执行本回合决策，动画会在后续 update 中并发播放。
         enemy->onPlayerTurnAdvanced(currentTurn, playerTile, nowMs, enemyBlockQuery);
     }
 }
@@ -648,24 +643,16 @@ GC_KEEPALIVE void gc_center_camera() {
     g_camera->centerOn(g_player->worldPos(), bounds());
 }
 
-// 在 cpp/src/web/GameCoreBridge.cpp 中修改这个函数：
-
 GC_KEEPALIVE void gc_request_move(std::int32_t dx, std::int32_t dy, float nowMs) {
     if (!g_player || g_player->isDead()) return;
-
-    // 遍历当前队列，看看是否已经有移动指令在排队
     for (auto& cmd : g_playerCommandQueue) {
         if (cmd.type == PlayerCommandType::Move) {
-            // 如果已经有排队的移动指令，我们不增加队列长度，而是直接【覆盖】它的方向！
-            // 这样既防止了“刹不住车”，又能让玩家长按变向时实现极速响应
             cmd.dx = dx;
             cmd.dy = dy;
             cmd.nowMs = nowMs;
             return; 
         }
     }
-
-    // 如果队列里目前没有移动指令，才推入新的
     g_playerCommandQueue.push_back(PlayerCommand{PlayerCommandType::Move, dx, dy, nowMs});
 }
 
