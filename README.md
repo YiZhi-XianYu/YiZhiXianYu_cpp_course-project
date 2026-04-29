@@ -80,6 +80,6 @@
   - 3189-焦迈奇
   - Waltz in 17edo-Deister Orchestra
   - Old Doll-Bluerra-sai
-  - 于是没有洗头（伴奏） 城市傍晚（伴奏） 想起他们 晚安曲 幼鸟指南（伴奏）-毛不易
+  - 于是没有洗头（伴奏）、城市傍晚（伴奏）、幼鸟指南（伴奏）、想起他们、晚安曲-毛不易
 - **地图构建**: Tiled Map Editor
 - **特别鸣谢**: 南开大学 C++ 、Copilot 、Gemini 、Doubao
