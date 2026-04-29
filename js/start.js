@@ -1,4 +1,6 @@
 console.log("=== 正在运行最新版的 start.js ===");
+
+// 创建星空效果：在主页上随机生成闪烁星星
 function createStars() {
     const starContainer = document.getElementById('stars-container');
     const starCount = 150; 
@@ -41,6 +43,7 @@ const nightBgmPaths = [
     '../assets/bgm/nightbgm5.mp3'
 ];
 
+// 全局背景音乐播放器
 const bgmAudio = new Audio();
 bgmAudio.loop = true; 
 bgmAudio.volume = 0;  
@@ -49,6 +52,7 @@ const FADE_DURATION = 800;
 const MAX_VOLUME = 0.6;
 let fadeInterval = null;   
 
+// 音乐淡入淡出效果
 function fadeAudio(targetVolume, callback) {
     if (fadeInterval) clearInterval(fadeInterval);
     
@@ -76,6 +80,7 @@ function fadeAudio(targetVolume, callback) {
     }, stepTime);
 }
 
+// 随机播放日/夜背景音乐
 function playRandomMusic(isDay) {
     const list = isDay ? dayBgmPaths : nightBgmPaths;
     const randomMusic = list[Math.floor(Math.random() * list.length)];
@@ -112,6 +117,7 @@ const runToken = new URLSearchParams(window.location.search).get('run');
 let isDayMode = false;
 let hasInteracted = false; 
 
+// 首次用户交互时解锁浏览器音频限制
 function unlockAudio() {
     if (!hasInteracted) {
         hasInteracted = true;
@@ -124,11 +130,13 @@ function unlockAudio() {
 
 document.addEventListener('click', unlockAudio, { once: true });
 
+// 更新日/夜切换按钮文本
 function updateSwitchButtonText() {
     if (!btnSwitch) return;
     btnSwitch.textContent = isDayMode ? '切换为夜间' : '切换为白天';
 }
 
+// 要求玩家选择角色（法师或弓箭手）
 function askPlayerRole() {
     return new Promise((resolve) => {
         if (!roleOverlay || !roleMage || !roleArcher || !roleCancel) {
@@ -178,6 +186,7 @@ function askPlayerRole() {
     });
 }
 
+// 点击开始按钮时，解锁音频，要求选择角色，保存选择并跳转到游戏页面
 btnStart.addEventListener('click', async () => {
     unlockAudio();
     const selectedRole = await askPlayerRole();

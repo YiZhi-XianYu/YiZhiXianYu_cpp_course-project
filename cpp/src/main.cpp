@@ -12,6 +12,7 @@
 
 namespace {
 
+//寻找项目根目录
 std::filesystem::path findProjectRoot() {
     auto current = std::filesystem::current_path();
 
@@ -32,6 +33,7 @@ std::filesystem::path findProjectRoot() {
     return {};
 }
 
+//自动打开浏览器
 bool openInBrowser(const std::wstring& target) {
 #ifdef _WIN32
     const auto result = reinterpret_cast<std::uintptr_t>(
@@ -44,6 +46,7 @@ bool openInBrowser(const std::wstring& target) {
 #endif
 }
 
+//启动python http服务器
 bool launchDetachedCommand(const std::wstring& commandLine) {
 #ifdef _WIN32
     STARTUPINFOW startupInfo{};
@@ -82,6 +85,7 @@ bool launchDetachedCommand(const std::wstring& commandLine) {
 #endif
 }
 
+//运行命令并等待执行完毕
 bool launchCommandAndWait(
     const std::wstring& commandLine,
     const std::wstring* workingDirectory = nullptr,
@@ -129,6 +133,7 @@ bool launchCommandAndWait(
 #endif
 }
 
+//生成随机数字，防缓存
 std::wstring buildRunToken() {
     const auto now = std::chrono::system_clock::now().time_since_epoch();
     const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
@@ -139,6 +144,7 @@ std::filesystem::path buildScriptPath(const std::filesystem::path& rootDir) {
     return rootDir / "cpp" / "build_game_wasm.ps1";
 }
 
+//找到 emcc.bat 路径
 std::filesystem::path emccPath(const std::filesystem::path& rootDir) {
 #ifdef _WIN32
     const auto localEmcc = rootDir / "tools" / "emsdk" / "upstream" / "emscripten" / "emcc.bat";
@@ -161,6 +167,7 @@ std::filesystem::path buildStampPath(const std::filesystem::path& rootDir) {
     return rootDir / "cpp" / "web" / "game_core.build.stamp";
 }
 
+//获取源文件最新修改时间
 std::filesystem::file_time_type latestSourceTime(const std::filesystem::path& rootDir) {
     const std::filesystem::path files[] = {
         rootDir / "cpp" / "src" / "web" / "GameCoreBridge.cpp",
@@ -189,6 +196,7 @@ std::filesystem::file_time_type latestSourceTime(const std::filesystem::path& ro
     return latest;
 }
 
+//检查 wasm 模块是否需要重建
 bool wasmNeedsRebuild(const std::filesystem::path& rootDir) {
     const auto jsPath = wasmJsPath(rootDir);
     const auto wasmPath = wasmBinaryPath(rootDir);
@@ -205,6 +213,7 @@ bool wasmNeedsRebuild(const std::filesystem::path& rootDir) {
     return outputTime < sourceTime;
 }
 
+//构建 wasm 模块
 bool buildWasmModule(const std::filesystem::path& rootDir) {
 #ifdef _WIN32
     if (!wasmNeedsRebuild(rootDir)) {
@@ -250,6 +259,7 @@ bool buildWasmModule(const std::filesystem::path& rootDir) {
 #endif
 }
 
+//启动本地 HTTP 服务
 bool startLocalServer(const std::filesystem::path& rootDir, int* selectedPort) {
 #ifdef _WIN32
     const std::wstring root = rootDir.wstring();
@@ -280,6 +290,7 @@ bool startLocalServer(const std::filesystem::path& rootDir, int* selectedPort) {
 
 } // namespace
 
+// 主程序入口：优先构建 WASM 模块，并起剰本地 HTTP 服务打开游戏主页
 int main() {
     const auto rootDir = findProjectRoot();
     if (rootDir.empty()) {

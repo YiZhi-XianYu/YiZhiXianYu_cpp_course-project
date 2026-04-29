@@ -1,4 +1,6 @@
+//主要渲染和画面逻辑
 (function () {
+    // 游戏配置常量（瓦片大小、移动时长、摄像机参数等）
     const DEFAULTS = {
         tileSize: 32,
         worldScale: 2,
@@ -67,6 +69,7 @@
         victoryOnBossDeath: false
     };
 
+    // 地图中蜡烛位置（环形分布）
     const CANDLE_POSITIONS = [
         { x: 17, y: 9 },   // 北
         { x: 22, y: 14 },  // 东北
@@ -91,6 +94,7 @@
         return new URL(target, window.location.href).href;
     }
 
+// 地图游戏主逻辑：初始化画布、加载TMX地图、管理游戏循环、处理输入和UI更新
     function startMapGame(userConfig) {
         const config = {
             ...DEFAULTS,

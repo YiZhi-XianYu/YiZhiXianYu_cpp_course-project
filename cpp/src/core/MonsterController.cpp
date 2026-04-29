@@ -33,6 +33,7 @@ MonsterController::MonsterController(MonsterConfig config, MonsterRole role)
       rng_(std::random_device{}()) {
 }
 
+// 初始化怪物位置和战斗状态
 void MonsterController::setSpawn(TilePos spawn) {
     tilePos_ = spawn;
     worldPos_ = tileToWorld(spawn);
@@ -66,6 +67,7 @@ void MonsterController::onMapSwitched() {
     lastProcessedPlayerTurn_ = -1;
 }
 
+//受伤函数
 void MonsterController::applyDamage(std::int32_t damage, float nowMs, std::optional<TilePos> attackerTile) {
     if (dead_ || removed_ || damage <= 0) return;
 
@@ -92,6 +94,7 @@ void MonsterController::applyDamage(std::int32_t damage, float nowMs, std::optio
     }
 }
 
+//每帧更新怪物状态：处理受伤和死亡动画，移动插值，攻击状态
 void MonsterController::update(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
     if (hurt_ && (nowMs - hurtStartTimeMs_ >= config_.hurtDurationMs)) {
@@ -147,6 +150,7 @@ void MonsterController::update(float nowMs,
     (void)isBlocked;
 }
 
+// 每当玩家回合推进时执行怪物AI逻辑：技能冷却、探测、巡逻、追击、攻击
 void MonsterController::onPlayerTurnAdvanced(
     std::int32_t playerTurn,
     TilePos playerTile,
@@ -261,6 +265,7 @@ std::int32_t MonsterController::currentHp() const {
     return currentHp_;
 }
 
+// 获取当前攻击范围内的所有格子（3x3范围）
 std::vector<TilePos> MonsterController::attackAreaTiles() const {
     if (!attacking_ || dead_ || removed_) return {};
 
@@ -281,6 +286,7 @@ Vec2 MonsterController::tileToWorld(TilePos tilePos) const {
     };
 }
 
+// 根据朝向返回对应的格子偏移
 TilePos MonsterController::directionToTileOffset(Facing facing) {
     switch (facing) {
         case Facing::Left:  return {-1, 0};
@@ -291,12 +297,14 @@ TilePos MonsterController::directionToTileOffset(Facing facing) {
     }
 }
 
+// 判断玩家是否在怪物的发现范围内（基于曼哈顿距离）
 bool MonsterController::inDiscoverRange(TilePos playerTile) const {
     const std::int32_t dx = std::abs(playerTile.x - tilePos_.x);
     const std::int32_t dy = std::abs(playerTile.y - tilePos_.y);
     return dx <= role_.vision().discoverRadius && dy <= role_.vision().discoverRadius;
 }
 
+// 判断玩家是否在怪物的攻击范围内（基于曼哈顿距离和攻击半径）
 bool MonsterController::inAttackRange(TilePos playerTile) const {
     const std::int32_t radius = std::max(1, role_.normalAttack().rangeRadius);
     const std::int32_t dx = std::abs(playerTile.x - tilePos_.x);
@@ -304,6 +312,7 @@ bool MonsterController::inAttackRange(TilePos playerTile) const {
     return dx <= radius && dy <= radius;
 }
 
+// 朝向目标格子更新怪物朝向
 void MonsterController::faceTo(TilePos target) {
     const std::int32_t dx = target.x - tilePos_.x;
     const std::int32_t dy = target.y - tilePos_.y;
@@ -314,6 +323,7 @@ void MonsterController::faceTo(TilePos target) {
     }
 }
 
+// 开始攻击：设置状态，随机选择攻击变体，记录时间
 void MonsterController::startAttack(float nowMs) {
     if (dead_ || removed_) return;
     attacking_ = true;
@@ -326,6 +336,7 @@ void MonsterController::startAttack(float nowMs) {
     attackVariant_ = attackPicker(rng_);
 }
 
+// 开始移动：设置状态，记录起始和目标位置，计算朝向
 void MonsterController::startMove(TilePos nextTile, float nowMs) {
     if (dead_ || removed_) return;
     if (nextTile.x < tilePos_.x) facing_ = Facing::Left;
@@ -340,11 +351,13 @@ void MonsterController::startMove(TilePos nextTile, float nowMs) {
     move_.targetTile = nextTile;
 }
 
+// 设置怪物生命值，并根据生命值更新受伤和死亡状态
 void MonsterController::setHp(std::int32_t hp) {
     if (dead_ || removed_) return;
     currentHp_ = std::clamp(hp, 0, role_.stats().maxHp);
 }
 
+// 根据攻击请求尝试开始攻击动作，检查自动锁定并设置状态
 bool MonsterController::tryMoveBy(TilePos offset, float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
     if (dead_ || removed_) return false;
@@ -357,6 +370,7 @@ bool MonsterController::tryMoveBy(TilePos offset, float nowMs,
     return true;
 }
 
+// 在没有玩家可见的情况下随机巡逻：尝试四个方向的移动，直到成功或尝试完毕
 void MonsterController::randomPatrol(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
     if (dead_ || removed_) return;
@@ -373,6 +387,7 @@ void MonsterController::randomPatrol(float nowMs,
     }
 }
 
+// 使用广度优先搜索找到通往目标的下一步最短路径，考虑障碍物和搜索范围限制
 std::optional<TilePos> MonsterController::nextShortestStepToward(
     TilePos target,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) const {

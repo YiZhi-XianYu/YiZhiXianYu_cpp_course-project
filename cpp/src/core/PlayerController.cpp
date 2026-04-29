@@ -24,6 +24,7 @@ TilePos addTile(TilePos a, TilePos b) {
     return TilePos{a.x + b.x, a.y + b.y};
 }
 
+// 根据方向向量获取 Facing 枚举值，默认朝右
 Facing facingFromDirectionVector(TilePos direction) {
     if (direction.x < 0) return Facing::Left;
     if (direction.x > 0) return Facing::Right;
@@ -39,6 +40,7 @@ PlayerController::PlayerController(PlayerConfig config, CharacterRole role)
     currentHp_ = role_.stats().maxHp;
 }
 
+// 初始化玩家位置和状态
 void PlayerController::setSpawn(TilePos spawn) {
     tilePos_ = spawn;
     worldPos_ = tileToWorld(spawn);
@@ -74,6 +76,7 @@ void PlayerController::setSpawn(TilePos spawn) {
     bigWave_ = BigWaveState{};
 }
 
+//实现命令队列
 void PlayerController::requestMove(std::int32_t dx, std::int32_t dy,
     float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
@@ -102,6 +105,7 @@ void PlayerController::requestBigSkill(float nowMs) {
     requestSkill(SkillSlot::Big, nowMs);
 }
 
+//受伤函数
 void PlayerController::applyDamage(std::int32_t damage, float nowMs) {
     if (dead_ || damage <= 0) return;
 
@@ -120,6 +124,7 @@ void PlayerController::applyDamage(std::int32_t damage, float nowMs) {
     }
 }
 
+//复活函数
 void PlayerController::revive(float nowMs) {
     currentHp_ = role_.stats().maxHp;
     hurt_ = false;
@@ -142,6 +147,8 @@ void PlayerController::revive(float nowMs) {
     clearPendingActions();
 }
 
+//视频讲解
+// 更新玩家状态：处理移动/攻击动画、检查动作完成、尝试开始新动作
 void PlayerController::update(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
     const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy,
@@ -233,6 +240,7 @@ bool PlayerController::attackUsesAutoLock() const {
     return attackUsesAutoLock_;
 }
 
+// 消耗攻击命中准备状态，返回是否成功
 bool PlayerController::consumeAttackImpactReady() {
     if (!attacking_) return false;
     if (!attackImpactResolved_) return false;
@@ -299,6 +307,7 @@ std::int32_t PlayerController::currentTurn() const {
     return turnCounter_;
 }
 
+// 获取当前攻击范围内的格子列表
 std::vector<TilePos> PlayerController::attackAreaTiles() const {
     if (!attacking_) return {};
 
@@ -345,6 +354,7 @@ Vec2 PlayerController::worldPos() const {
     return worldPos_;
 }
 
+// 根据 Facing 返回对应的方向向量
 TilePos PlayerController::forwardVector(Facing facing) {
     switch (facing) {
         case Facing::Left:  return {-1, 0};
@@ -385,6 +395,7 @@ TilePos PlayerController::backwardVector(Facing facing) {
     }
 }
 
+// 获取小技能攻击范围的格子列表
 std::vector<TilePos> PlayerController::smallSkillAttackTiles() const {
     const TilePos front = forwardVector(facing_);
     const TilePos left = leftVector(facing_);
@@ -412,6 +423,7 @@ std::vector<TilePos> PlayerController::smallSkillAttackTiles() const {
     };
 }
 
+// 获取当前大波覆盖的格子列表
 std::vector<TilePos> PlayerController::bigWaveCurrentTiles() const {
     const TilePos front = forwardVector(bigWave_.facing);
     const TilePos left = leftVector(bigWave_.facing);
@@ -431,6 +443,7 @@ std::vector<TilePos> PlayerController::bigWaveCurrentTiles() const {
     };
 }
 
+// 将格子坐标转换为世界像素坐标（中心点位置）
 Vec2 PlayerController::tileToWorld(TilePos tilePos) const {
     return {
         (static_cast<float>(tilePos.x) + 0.5f) * config_.tileWidth * config_.worldScale,
@@ -442,6 +455,8 @@ void PlayerController::resetAttackChain() {
     attackChainStep_ = 0;
 }
 
+//视频讲解
+// 处理回合推进：更新技能持续时间、冷却时间，处理大波推进
 void PlayerController::onTurnAdvanced() {
     ++turnCounter_;
     updateBigWavePerTurn();
@@ -498,6 +513,8 @@ void PlayerController::requestSkill(SkillSlot slot, float nowMs) {
     pendingBigSkillSerial_ = ++inputSerialCounter_;
 }
 
+//视频讲解
+// 尝试开始下一个动作（移动、攻击、小技能、大技能），优先级由输入时间决定
 void PlayerController::tryStartNextAction(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
     const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy){
@@ -560,6 +577,7 @@ void PlayerController::tryStartNextAction(float nowMs,
     startBigSkillAction(nowMs);
 }
 
+// 根据移动请求尝试开始移动动作，检查碰撞并设置状态
 void PlayerController::startMoveAction(const MoveRequest& action, float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
     if (dead_) return;
@@ -583,6 +601,7 @@ void PlayerController::startMoveAction(const MoveRequest& action, float nowMs,
     moveTargetTile_ = next;
 }
 
+// 根据攻击请求尝试开始攻击动作，检查自动锁定并设置状态
 void PlayerController::startAttackAction(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy) {
     if (dead_) return;
@@ -650,6 +669,7 @@ void PlayerController::startAttackAction(float nowMs,
     }
 }
 
+// 根据小技能请求尝试开始小技能动作，检查冷却并设置状态
 void PlayerController::startSmallSkillAction(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked,
     const std::function<bool(std::int32_t, std::int32_t)>& hasEnemy) {
@@ -692,6 +712,7 @@ void PlayerController::startSmallSkillAction(float nowMs,
     }
 }
 
+// 根据大技能请求尝试开始大技能动作，检查冷却并设置状态
 void PlayerController::startBigSkillAction(float nowMs) {
     if (dead_) return;
     if (!bigSkillReady()) {
@@ -733,6 +754,7 @@ void PlayerController::startBigSkillAction(float nowMs) {
     attackUsesAutoLock_ = false;
 }
 
+// 处理攻击完成：重置状态，根据是否小技能激活调整攻击属性，推进回合
 void PlayerController::finishAttack(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
     attacking_ = false;
@@ -756,6 +778,7 @@ void PlayerController::finishAttack(float nowMs,
     onTurnAdvanced();
 }
 
+// 处理移动完成：更新位置，重置状态，推进回合
 void PlayerController::clearPendingActions() {
     pendingMove_.reset();
     pendingAttack_ = false;
@@ -768,6 +791,7 @@ void PlayerController::clearPendingActions() {
     inputSerialCounter_ = 0;
 }
 
+// 处理移动完成：更新位置，重置状态，推进回合
 void PlayerController::finishMove(float nowMs,
     const std::function<bool(std::int32_t, std::int32_t)>& isBlocked) {
     tilePos_ = moveTargetTile_;
@@ -778,6 +802,7 @@ void PlayerController::finishMove(float nowMs,
     onTurnAdvanced();
 }
 
+// 设置玩家生命值，并根据生命值更新受伤和死亡状态
 void PlayerController::setPlayerHp(std::int32_t hp) {
     currentHp_ = hp;
     

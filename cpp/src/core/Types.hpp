@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+// 核心几何和状态类型定义：2D 向量、瓦片位置、方向枚举
+
 namespace core {
 
 struct Vec2 {

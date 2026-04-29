@@ -1,3 +1,7 @@
+// C++ WASM 运行时辅助：封装 WASM 模块加载、JS/C++ 互操作、以及纯 JS Fallback 实现
+// 当 WASM 模块不可用时，此文件提供完整的后备运行时环境
+// 提供前后端统一的 API 接口，供游戏逻辑调用
+
 function createJsFallbackRuntime() {
     const state = {
         tileWidth: 32,

@@ -2,6 +2,7 @@
 
 namespace core {
 
+// 创建物理法师角色：平衡的攻击力和范围
 CharacterRole CharacterRole::plainPhysicalMage() {
     CharacterRole role{};
     role.kind_ = RoleKind::PlainPhysicalMage;
@@ -19,6 +20,7 @@ CharacterRole CharacterRole::plainPhysicalMage() {
     return role;
 }
 
+// 创建弓箭手角色：高攻击力、独特技能（祝福、滞空箭）
 CharacterRole CharacterRole::legendaryLineArcher() {
     CharacterRole role{};
     role.kind_ = RoleKind::LegendaryLineArcher;

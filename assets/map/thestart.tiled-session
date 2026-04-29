@@ -1,5 +1,5 @@
 {
-    "activeFile": "地牢2.tmx",
+    "activeFile": "地牢3.tmx",
     "expandedProjectPaths": [
         "."
     ],
@@ -59,8 +59,8 @@
             "scale": 1.128125,
             "selectedLayer": 0,
             "viewCenter": {
-                "x": 559.7783933518006,
-                "y": 559.7783933518006
+                "x": 611.1911357340721,
+                "y": 561.5512465373961
             }
         }
     },
@@ -80,8 +80,8 @@
     "recentFiles": [
         "demonstration.tsx",
         "地牢1.tmx",
-        "地牢3.tmx",
         "地牢2.tmx",
+        "地牢3.tmx",
         "C:/software/Tiled/map/demonstration.tsx",
         "C:/software/Tiled/map/地牢.tsx",
         "C:/software/Tiled/map/Dungeon_Tileset.tsx",

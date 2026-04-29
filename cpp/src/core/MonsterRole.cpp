@@ -2,6 +2,7 @@
 
 namespace core {
 
+// 创建哥布林：低级敌人，血量/伤害均衡
 MonsterRole MonsterRole::goblin() {
     MonsterRole role{};
     role.displayName_ = "哥布林";
@@ -15,6 +16,7 @@ MonsterRole MonsterRole::goblin() {
     return role;
 }
 
+// 创建哥布林大王：高级BOSS敌人，拥有特殊技能（随机释放1/2/3技能）
 MonsterRole MonsterRole::goblinKing() {
     MonsterRole role{};
     role.displayName_ = "哥布林大王";

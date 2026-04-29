@@ -4,10 +4,12 @@
 
 namespace core {
 
+// 相机控制器：以玩家为中心跟随，支持死区和边界约束
 CameraController::CameraController(CameraConfig config)
     : config_(config) {
 }
 
+// 直接将相机中心设置在指定位置，考虑边界约束
 void CameraController::centerOn(const Vec2& worldPos, const CameraBounds& bounds) {
     const float maxX = std::max(0.0f, bounds.worldWidth - bounds.viewportWidth);
     const float maxY = std::max(0.0f, bounds.worldHeight - bounds.viewportHeight);
@@ -16,6 +18,7 @@ void CameraController::centerOn(const Vec2& worldPos, const CameraBounds& bounds
     position_.y = clamp(worldPos.y - bounds.viewportHeight * 0.5f, 0.0f, maxY);
 }
 
+// 根据玩家位置更新相机，启用死区跟随平滑
 void CameraController::updateFollow(const Vec2& worldPos, const CameraBounds& bounds) {
     const float deadHalfX = bounds.viewportWidth * config_.deadZoneRatioX;
     const float topDeadHalfY = bounds.viewportHeight * config_.topDeadZoneRatioY;

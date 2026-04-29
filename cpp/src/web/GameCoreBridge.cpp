@@ -30,9 +30,9 @@ using core::PlayerController;
 using core::RoleKind;
 using core::TilePos;
 
-std::unique_ptr<PlayerController> g_player;
-std::vector<std::unique_ptr<MonsterController>> g_enemies;
-std::unique_ptr<CameraController> g_camera;
+std::unique_ptr<PlayerController> g_player; // 玩家控制器实例
+std::vector<std::unique_ptr<MonsterController>> g_enemies; // 怪物控制器列表
+std::unique_ptr<CameraController> g_camera; // 相机控制器实例
 PlayerConfig g_playerConfig{};
 MonsterConfig g_monsterConfig{};
 CameraConfig g_cameraConfig{};
@@ -72,6 +72,7 @@ float g_worldHeight = 0.0f;
 float g_viewportWidth = 0.0f;
 float g_viewportHeight = 0.0f;
 
+// 根据整数角色类型返回对应的 CharacterRole 实例
 CharacterRole roleFromKindInt(std::int32_t roleKind) {
     if (roleKind == 0) {
         return CharacterRole::plainPhysicalMage();
@@ -79,6 +80,7 @@ CharacterRole roleFromKindInt(std::int32_t roleKind) {
     return CharacterRole::legendaryLineArcher();
 }
 
+// 重置战斗相关的运行时状态
 void resetCombatRuntimeState() {
     g_lastProcessedTurn = -1;
     g_enemyTurnCursor = 0;
@@ -91,6 +93,7 @@ void resetCombatRuntimeState() {
     g_playerCommandQueue.clear();
 }
 
+// 确保敌人控制器列表大小至少为 count
 void ensureEnemiesSize(std::size_t count) {
     while (g_enemies.size() < count) {
         g_enemies.push_back(std::make_unique<MonsterController>(g_monsterConfig));
@@ -103,6 +106,7 @@ void ensureEnemiesSize(std::size_t count) {
     }
 }
 
+// 确保玩家、敌人和相机控制器实例已初始化
 void ensureControllersInitialized() {
     if (!g_player) {
         g_player = std::make_unique<PlayerController>(g_playerConfig, CharacterRole::legendaryLineArcher());
@@ -116,6 +120,7 @@ void ensureControllersInitialized() {
     }
 }
 
+// 获取当前相机边界信息
 CameraBounds bounds() {
     CameraBounds b{};
     b.worldWidth = g_worldWidth;
@@ -125,6 +130,7 @@ CameraBounds bounds() {
     return b;
 }
 
+// 基于全局地图数据判断指定坐标是否为不可通行的地形
 bool isSolidBase(std::int32_t x, std::int32_t y) {
     if (x < 0 || y < 0 || x >= g_mapWidth || y >= g_mapHeight) return true;
     const std::int32_t index = y * g_mapWidth + x;
@@ -132,10 +138,12 @@ bool isSolidBase(std::int32_t x, std::int32_t y) {
     return g_baseSolidGrid[static_cast<std::size_t>(index)] != 0;
 }
 
+// 判断指定坐标是否被任何敌人占据
 bool isBlocked(std::int32_t x, std::int32_t y) {
     return isSolidBase(x, y + g_collisionYOffset);
 }
 
+// 判断指定坐标是否有敌人存在（用于玩家移动和攻击范围判断）
 bool hasEnemyAt(std::int32_t x, std::int32_t y) {
     return std::any_of(g_enemies.begin(), g_enemies.end(), [x, y](const std::unique_ptr<MonsterController>& enemy) {
         if (!enemy || enemy->isRemoved()) return false;
@@ -144,11 +152,14 @@ bool hasEnemyAt(std::int32_t x, std::int32_t y) {
     });
 }
 
+// 判断指定坐标是否对玩家来说是不可通行的（地形或敌人）
 bool isBlockedForPlayer(std::int32_t x, std::int32_t y) {
     if (isBlocked(x, y)) return true;
     return hasEnemyAt(x, y);
 }
 
+//视频讲解
+// 判断指定坐标是否对敌人来说是不可通行的（地形、玩家或其他敌人）
 bool isBlockedForEnemy(std::int32_t x, std::int32_t y, TilePos playerTile, std::int32_t selfIndex) {
     if (isBlocked(x, y)) return true;
     if (x == playerTile.x && y == playerTile.y) return true;
@@ -164,12 +175,14 @@ bool isBlockedForEnemy(std::int32_t x, std::int32_t y, TilePos playerTile, std::
     return false;
 }
 
+// 判断指定坐标是否有敌人存在（用于敌人AI的玩家位置判断）
 bool tileInArea(const std::vector<TilePos>& tiles, TilePos tile) {
     return std::any_of(tiles.begin(), tiles.end(), [tile](const TilePos& areaTile) {
         return areaTile.x == tile.x && areaTile.y == tile.y;
     });
 }
 
+// 查找指定坐标是否有敌人存在，并返回指向该敌人的指针（用于技能效果解析）
 MonsterController* findAliveEnemyAt(std::int32_t x, std::int32_t y) {
     for (auto& enemy : g_enemies) {
         if (!enemy || enemy->isRemoved() || enemy->isDead()) continue;
@@ -181,6 +194,8 @@ MonsterController* findAliveEnemyAt(std::int32_t x, std::int32_t y) {
     return nullptr;
 }
 
+//视频讲解
+// 解析并处理玩家的攻击指令，计算箭矢轨迹并对路径上的敌人造成伤害
 void resolveArcherArrowTrace(
     TilePos origin,
     TilePos direction,
@@ -189,6 +204,7 @@ void resolveArcherArrowTrace(
     float nowMs,
     TilePos damageSource
 ) {
+    //跳过无效情况
     if (!g_player) return;
     if (maxRange <= 0) return;
     if (direction.x == 0 && direction.y == 0) return;
@@ -200,11 +216,13 @@ void resolveArcherArrowTrace(
     for (std::int32_t travelled = 0; travelled < maxRange; ++travelled) {
         TilePos next{current.x + dir.x, current.y + dir.y};
 
+        //如果前方被阻挡，且允许转向一次，则尝试转向（优先斜向，再优先左右，再直接掉头）
         if (isBlocked(next.x, next.y)) {
             if (!allowOneTurn || turned) {
                 break;
             }
 
+            //如果是斜向，检查两个正交方向的阻挡情况，决定转向方式
             if (dir.x != 0 && dir.y != 0) {
                 const bool blockX = isBlocked(current.x + dir.x, current.y);
                 const bool blockY = isBlocked(current.x, current.y + dir.y);
@@ -233,6 +251,7 @@ void resolveArcherArrowTrace(
 
         current = next;
 
+        //如果当前格子有敌人，造成伤害后停止箭矢继续前进
         MonsterController* enemy = findAliveEnemyAt(current.x, current.y);
         if (enemy) {
             enemy->applyDamage(g_player->currentAttackPower(), nowMs, damageSource);
@@ -241,6 +260,8 @@ void resolveArcherArrowTrace(
     }
 }
 
+//视频讲解
+// 解析并处理玩家的弓箭祝福技能效果，对所有符合条件的敌人造成伤害
 void resolveArcherBlessingVolley(float nowMs) {
     if (!g_player) return;
     if (!g_player->consumeArcherVolleyReady()) return;
@@ -260,6 +281,7 @@ void resolveArcherBlessingVolley(float nowMs) {
     }
 }
 
+// 根据 Facing 返回对应的前进方向向量
 TilePos forwardVectorForFacing(Facing facing) {
     switch (facing) {
         case Facing::Left:  return {-1, 0};
@@ -270,6 +292,7 @@ TilePos forwardVectorForFacing(Facing facing) {
     }
 }
 
+// 根据 Facing 返回对应的左侧方向向量
 TilePos leftVectorForFacing(Facing facing) {
     switch (facing) {
         case Facing::Left:  return {0, 1};
@@ -280,6 +303,7 @@ TilePos leftVectorForFacing(Facing facing) {
     }
 }
 
+// 根据 Facing 返回对应的右侧方向向量
 TilePos rightVectorForFacing(Facing facing) {
     switch (facing) {
         case Facing::Left:  return {0, -1};
@@ -290,6 +314,7 @@ TilePos rightVectorForFacing(Facing facing) {
     }
 }
 
+// 获取玩家大波当前覆盖的格子列表
 std::vector<TilePos> bigWaveTilesAtDistance(const PlayerController& player, std::int32_t frontDistance) {
     const TilePos origin = player.bigWaveOriginTile();
     const Facing facing = player.bigWaveFacing();
@@ -311,6 +336,7 @@ std::vector<TilePos> bigWaveTilesAtDistance(const PlayerController& player, std:
     };
 }
 
+// 将 inTiles 中的格子添加到 outTiles 中，但避免重复添加
 void appendUniqueTiles(std::vector<TilePos>& outTiles, const std::vector<TilePos>& inTiles) {
     for (const TilePos& tile : inTiles) {
         const bool exists = std::any_of(outTiles.begin(), outTiles.end(), [&tile](const TilePos& t) {
@@ -322,6 +348,7 @@ void appendUniqueTiles(std::vector<TilePos>& outTiles, const std::vector<TilePos
     }
 }
 
+// 判断当前是否有任何敌人在进行攻击或移动动画（用于玩家命令的时机判断）
 bool isEnemyAnimating() {
     return std::any_of(g_enemies.begin(), g_enemies.end(), [](const std::unique_ptr<MonsterController>& enemy) {
         if (!enemy || enemy->isRemoved()) return false;
@@ -329,12 +356,14 @@ bool isEnemyAnimating() {
     });
 }
 
+// 根据索引返回对应的敌人控制器指针，如果索引无效或敌人已移除则返回 nullptr
 MonsterController* enemyAtIndex(std::int32_t index) {
     if (index < 0) return nullptr;
     if (index >= static_cast<std::int32_t>(g_enemies.size())) return nullptr;
     return g_enemies[static_cast<std::size_t>(index)].get();
 }
 
+// 返回当前存在的第一个敌人控制器指针，如果没有有效敌人则返回 nullptr
 const MonsterController* legacyEnemy() {
     for (const auto& enemy : g_enemies) {
         if (!enemy) continue;
@@ -344,6 +373,8 @@ const MonsterController* legacyEnemy() {
     return nullptr;
 }
 
+//视频讲解
+// 尝试从玩家命令队列中取出一个命令并执行，如果玩家正在动画或敌人正在动画则暂不执行
 void tryDispatchNextPlayerCommand(float nowMs) {
     if (!g_player || g_player->isDead()) return;
     if (g_playerCommandQueue.empty()) return;
@@ -373,6 +404,8 @@ void tryDispatchNextPlayerCommand(float nowMs) {
     g_player->update(nowMs, isBlockedForPlayer, hasEnemyAt, true);
 }
 
+//视频讲解
+// 解析并处理玩家的攻击指令，对攻击范围内的敌人造成伤害
 void resolvePlayerAttack(float nowMs) {
     if (!g_player) return;
     if (g_player->isDead()) return;
@@ -416,6 +449,8 @@ void resolvePlayerAttack(float nowMs) {
     }
 }
 
+//视频讲解
+// 解析并处理玩家的大波技能效果，计算当前波前覆盖的格子并对其中的敌人造成伤害
 void resolvePlayerBigWaveDamage(float nowMs) {
     if (!g_player) return;
 
@@ -477,6 +512,8 @@ void resolvePlayerBigWaveDamage(float nowMs) {
     }
 }
 
+//视频讲解
+// 解析并处理敌人攻击，对玩家造成伤害
 void resolveEnemyAttack(float nowMs) {
     if (!g_player) return;
     if (g_player->isDead()) return;
@@ -496,6 +533,7 @@ void resolveEnemyAttack(float nowMs) {
     }
 }
 
+// 处理敌人回合逻辑
 void processEnemyTurnLogic(std::int32_t currentTurn, TilePos playerTile, float nowMs) {
     if (g_enemyTurnCursor >= static_cast<std::int32_t>(g_enemies.size())) return;
 
@@ -514,6 +552,7 @@ void processEnemyTurnLogic(std::int32_t currentTurn, TilePos playerTile, float n
     }
 }
 
+// 更新所有敌人的状态（位置、动画等），基于当前玩家位置和地图阻挡情况
 void updateEnemies(float nowMs, TilePos playerTile) {
     for (std::size_t i = 0; i < g_enemies.size(); ++i) {
         auto* enemy = enemyAtIndex(static_cast<std::int32_t>(i));
@@ -527,8 +566,10 @@ void updateEnemies(float nowMs, TilePos playerTile) {
 
 } // namespace
 
+//让 C++ 函数以 C 语言的方式导出，方便 WASM 调用
 extern "C" {
 
+// WASM 初始化：设置游戏配置参数（瓦片大小、移动/攻击时长、相机参数）
 GC_KEEPALIVE void gc_init(
     float tileWidth,
     float tileHeight,
@@ -665,6 +706,7 @@ GC_KEEPALIVE void gc_center_camera() {
     g_camera->centerOn(g_player->worldPos(), bounds());
 }
 
+// 玩家移动请求
 GC_KEEPALIVE void gc_request_move(std::int32_t dx, std::int32_t dy, float nowMs) {
     if (!g_player || g_player->isDead()) return;
     for (auto& cmd : g_playerCommandQueue) {
@@ -704,6 +746,8 @@ GC_KEEPALIVE void gc_player_revive(float nowMs) {
     g_lastProcessedTurn = g_player->currentTurn();
 }
 
+//视频讲解
+// 主游戏循环：更新玩家/敌人位置、处理攻击、回合推进、AI决策
 GC_KEEPALIVE void gc_update(float nowMs) {
     ensureControllersInitialized();
     if (!g_player || !g_camera) return;
